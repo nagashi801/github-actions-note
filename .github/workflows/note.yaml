@@ -538,6 +538,32 @@ jobs:
               await insertHTML(page, locator, html);
             }
           }
+          async function fillEditorTitle(page, title) {
+            const candidates = [
+              'textarea[placeholder*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
+              'textarea[aria-label*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
+              'input[placeholder*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
+              'textarea',
+              '[contenteditable="true"][data-placeholder*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
+              '[contenteditable="true"][aria-label*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
+            ];
+            const titleBox = page.locator(candidates.join(', ')).first();
+            await titleBox.waitFor({ state: 'visible', timeout: 30000 });
+            try {
+              await titleBox.fill(title);
+            } catch {
+              await titleBox.click();
+              await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+              await page.keyboard.type(title);
+            }
+          }
+          async function findBodyBox(page) {
+            const boxes = page.locator('div[contenteditable="true"][role="textbox"], div[contenteditable="true"]');
+            await boxes.first().waitFor({ state: 'visible', timeout: 30000 });
+            const count = await boxes.count();
+            if (count > 1) return boxes.nth(1);
+            return boxes.first();
+          }
 
           const title = sanitizeTitle(rawTitle);
           const body = normalizeMarkdown(rawBody);
@@ -553,11 +579,17 @@ jobs:
             page = await context.newPage();
             page.setDefaultTimeout(180000);
             await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
+            await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+            console.log('CURRENT_URL=' + page.url());
+            await page.screenshot({ path: screenshot, fullPage: true });
+            console.log('SCREENSHOT=' + screenshot);
+            if (!/editor\.note\.com/.test(page.url())) {
+              throw new Error(`Not on note editor after navigation. Current URL: ${page.url()}. NOTE_STORAGE_STATE_JSON may be expired or invalid.`);
+            }
 
-            await page.waitForSelector('textarea[placeholder*="\u30bf\u30a4\u30c8\u30eb"]');
-            await page.fill('textarea[placeholder*="\u30bf\u30a4\u30c8\u30eb"]', title);
+            await fillEditorTitle(page, title);
 
-            const bodyBox = page.locator('div[contenteditable="true"][role="textbox"]').first();
+            const bodyBox = await findBodyBox(page);
             await bodyBox.waitFor({ state: 'visible' });
             await pasteHTML(page, context, bodyBox, html, body);
             await page.waitForFunction(() => {
