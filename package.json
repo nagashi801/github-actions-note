@@ -11,7 +11,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@anthropic-ai/claude-code": "^2.1.145",
+    "@anthropic-ai/sdk": "^0.97.1",
     "playwright": "^1.55.1"
   }
 }
