@@ -66,12 +66,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Claude Code SDK
+      - name: Install Anthropic SDK
         run: |
-          npm init -y
-          npm i @anthropic-ai/claude-code
+          npm i @anthropic-ai/sdk
 
-      - name: Research with Claude Code SDK
+      - name: Research with Anthropic SDK
         run: |
           cat > research.mjs <<'EOF'
           import Anthropic from '@anthropic-ai/sdk';
@@ -96,6 +95,19 @@ jobs:
             model: 'claude-sonnet-4-20250514',
             max_tokens: 4000,
             system: sys,
+            tools: [
+              {
+                type: 'web_search_20250305',
+                name: 'web_search',
+                max_uses: 10,
+              },
+              {
+                type: 'web_fetch_20250910',
+                name: 'web_fetch',
+                max_uses: 10,
+                citations: { enabled: true },
+              },
+            ],
             messages: [
               {
                 role: 'user',
@@ -109,7 +121,7 @@ jobs:
             .map(block => block.text)
             .join('\n\n');
           fs.writeFileSync(`${artifactsDir}/research.md`, assistantTexts || '');
-          try { fs.writeFileSync(`${artifactsDir}/research_trace.json`, JSON.stringify(messages, null, 2)); } catch {}
+          try { fs.writeFileSync(`${artifactsDir}/research_trace.json`, JSON.stringify(response, null, 2)); } catch {}
           EOF
           node research.mjs
 
