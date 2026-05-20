@@ -611,10 +611,10 @@ jobs:
           const title = sanitizeTitle(rawTitle);
           const body = normalizeMarkdown(rawBody);
           const html = String(marked.parse(body, { gfm: true, breaks: false }) || '');
-          const ssDir = path.join(os.tmpdir(), 'note-screenshots');
+          const ssDir = process.env.NOTE_DEBUG_DIR || path.join(os.tmpdir(), 'note-screenshots');
           fs.mkdirSync(ssDir, { recursive: true });
-          const screenshot = path.join(ssDir, `note-post-${Date.now()}.png`);
-          const debugHtml = path.join(ssDir, `note-editor-debug-${Date.now()}.html`);
+          const screenshot = path.join(ssDir, 'note-post.png');
+          const debugHtml = path.join(ssDir, 'note-editor-debug.html');
 
           let browser, context, page;
           try {
@@ -710,6 +710,8 @@ jobs:
           }
           EOF
           set -o pipefail
+          mkdir -p "$RUNNER_TEMP/note-debug"
+          export NOTE_DEBUG_DIR="$RUNNER_TEMP/note-debug"
           set +e
           node post.mjs 2>&1 | tee post.log
           status=${PIPESTATUS[0]}
@@ -725,15 +727,17 @@ jobs:
           exit "$status"
 
       - name: Upload screenshot
-        if: ${{ always() && steps.publish.outputs.screenshot != '' }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: note-screenshot
-          path: ${{ steps.publish.outputs.screenshot }}
+          path: ${{ runner.temp }}/note-debug/note-post.png
+          if-no-files-found: ignore
 
       - name: Upload editor debug
-        if: ${{ always() && steps.publish.outputs.debug_html != '' }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: note-editor-debug
-          path: ${{ steps.publish.outputs.debug_html }}
+          path: ${{ runner.temp }}/note-debug/note-editor-debug.html
+          if-no-files-found: ignore
