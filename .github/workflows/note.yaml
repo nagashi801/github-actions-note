@@ -540,12 +540,16 @@ jobs:
           }
           async function fillEditorTitle(page, title) {
             const candidates = [
-              'textarea[placeholder*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
-              'textarea[aria-label*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
-              'input[placeholder*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
+              'h1[contenteditable="true"]',
+              'h1[contenteditable]',
+              '[data-testid*="title"]',
+              '[class*="title"][contenteditable="true"]',
+              'textarea[placeholder*="\u30bf\u30a4\u30c8\u30eb"]',
+              'textarea[aria-label*="\u30bf\u30a4\u30c8\u30eb"]',
+              'input[placeholder*="\u30bf\u30a4\u30c8\u30eb"]',
               'textarea',
-              '[contenteditable="true"][data-placeholder*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
-              '[contenteditable="true"][aria-label*="\\u30bf\\u30a4\\u30c8\\u30eb"]',
+              '[contenteditable="true"][data-placeholder*="\u30bf\u30a4\u30c8\u30eb"]',
+              '[contenteditable="true"][aria-label*="\u30bf\u30a4\u30c8\u30eb"]',
             ];
             const titleBox = page.locator(candidates.join(', ')).first();
             await titleBox.waitFor({ state: 'visible', timeout: 30000 });
@@ -558,10 +562,9 @@ jobs:
             }
           }
           async function findBodyBox(page) {
-            const boxes = page.locator('div[contenteditable="true"][role="textbox"], div[contenteditable="true"]');
+            const boxes = page.locator('.ProseMirror[contenteditable="true"], div[contenteditable="true"][role="textbox"], div[contenteditable="true"]').filter({ hasNot: page.locator('h1') });
             await boxes.first().waitFor({ state: 'visible', timeout: 30000 });
             const count = await boxes.count();
-            if (count > 1) return boxes.nth(1);
             return boxes.first();
           }
 
