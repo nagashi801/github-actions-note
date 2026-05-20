@@ -516,7 +516,27 @@ jobs:
               sel.removeAllRanges();
               sel.addRange(range);
               document.execCommand('insertHTML', false, html);
+              el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertHTML', data: html }));
             }, html);
+          }
+          async function pasteHTML(page, context, locator, html, plain) {
+            await locator.click();
+            try {
+              const origin = new URL(START_URL).origin;
+              await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
+              await page.evaluate(async ({ html, plain }) => {
+                const item = new ClipboardItem({
+                  'text/html': new Blob([html], { type: 'text/html' }),
+                  'text/plain': new Blob([plain], { type: 'text/plain' }),
+                });
+                await navigator.clipboard.write([item]);
+              }, { html, plain });
+              await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
+              await page.waitForTimeout(500);
+            } catch (error) {
+              console.warn('Clipboard paste failed; falling back to insertHTML:', error?.message || error);
+              await insertHTML(page, locator, html);
+            }
           }
 
           const title = sanitizeTitle(rawTitle);
@@ -539,71 +559,95 @@ jobs:
 
             const bodyBox = page.locator('div[contenteditable="true"][role="textbox"]').first();
             await bodyBox.waitFor({ state: 'visible' });
-            await insertHTML(page, bodyBox, html);
+            await pasteHTML(page, context, bodyBox, html, body);
+            await page.waitForFunction(() => {
+              const el = document.querySelector('div[contenteditable="true"][role="textbox"]');
+              return (el?.innerText || el?.textContent || '').trim().length > 0;
+            });
 
             if (!IS_PUBLIC) {
               const saveBtn = page.locator('button:has-text("\u4e0b\u66f8\u304d\u4fdd\u5b58"), [aria-label*="\u4e0b\u66f8\u304d\u4fdd\u5b58"]').first();
               await saveBtn.waitFor({ state: 'visible' });
-              if (await saveBtn.isEnabled()) {
-                await saveBtn.click();
-                await page.locator('text=\u4fdd\u5b58\u3057\u307e\u3057\u305f').waitFor({ timeout: 4000 }).catch(() => {});
+              for (let i = 0; i < 30 && !(await saveBtn.isEnabled()); i++) {
+                await page.waitForTimeout(500);
               }
               await page.screenshot({ path: screenshot, fullPage: true });
+              console.log('SCREENSHOT=' + screenshot);
+              if (!(await saveBtn.isEnabled())) {
+                throw new Error('Draft save button is visible but still disabled after inserting title and body.');
+              }
+              await Promise.all([
+                Promise.race([
+                  page.waitForURL(url => !String(url).endsWith('/new'), { timeout: 15000 }).catch(() => null),
+                  page.locator('text=\u4fdd\u5b58\u3057\u307e\u3057\u305f').waitFor({ timeout: 15000 }).catch(() => null),
+                ]),
+                saveBtn.click(),
+              ]);
+              const saved = !page.url().endsWith('/new') || await page.locator('text=\u4fdd\u5b58\u3057\u307e\u3057\u305f').count().catch(() => 0);
+              await page.screenshot({ path: screenshot, fullPage: true });
+              if (!saved) {
+                console.log('DRAFT_URL=' + page.url());
+                throw new Error('Draft save click completed, but no saved confirmation or draft URL was detected.');
+              }
               console.log('DRAFT_URL=' + page.url());
               console.log('SCREENSHOT=' + screenshot);
-              process.exit(0);
-            }
+            } else {
+              const proceed = page.locator('button:has-text("\u516c\u958b\u306b\u9032\u3080")').first();
+              await proceed.waitFor({ state: 'visible' });
+              await proceed.click({ force: true });
 
-            const proceed = page.locator('button:has-text("\u516c\u958b\u306b\u9032\u3080")').first();
-            await proceed.waitFor({ state: 'visible' });
-            await proceed.click({ force: true });
+              await Promise.race([
+                page.waitForURL(/\/publish/i).catch(() => {}),
+                page.locator('button:has-text("\u6295\u7a3f\u3059\u308b")').first().waitFor({ state: 'visible' }).catch(() => {}),
+              ]);
 
-            await Promise.race([
-              page.waitForURL(/\/publish/i).catch(() => {}),
-              page.locator('button:has-text("\u6295\u7a3f\u3059\u308b")').first().waitFor({ state: 'visible' }).catch(() => {}),
-            ]);
-
-            const tags = TAGS.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
-            if (tags.length) {
-              let tagInput = page.locator('input[placeholder*="\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0"]');
-              if (!(await tagInput.count())) tagInput = page.locator('input[role="combobox"]').first();
-              await tagInput.waitFor({ state: 'visible' });
-              for (const t of tags) {
-                await tagInput.click();
-                await tagInput.fill(t);
-                await page.keyboard.press('Enter');
-                await page.waitForTimeout(120);
+              const tags = TAGS.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+              if (tags.length) {
+                let tagInput = page.locator('input[placeholder*="\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0"]');
+                if (!(await tagInput.count())) tagInput = page.locator('input[role="combobox"]').first();
+                await tagInput.waitFor({ state: 'visible' });
+                for (const t of tags) {
+                  await tagInput.click();
+                  await tagInput.fill(t);
+                  await page.keyboard.press('Enter');
+                  await page.waitForTimeout(120);
+                }
               }
+
+              const publishBtn = page.locator('button:has-text("\u6295\u7a3f\u3059\u308b")').first();
+              await publishBtn.waitFor({ state: 'visible' });
+              await publishBtn.click({ force: true });
+              await Promise.race([
+                page.waitForURL(u => !/\/publish/i.test(String(u)), { timeout: 20000 }).catch(() => {}),
+                page.locator('text=\u6295\u7a3f\u3057\u307e\u3057\u305f').first().waitFor({ timeout: 8000 }).catch(() => {}),
+                page.waitForTimeout(5000),
+              ]);
+
+              await page.screenshot({ path: screenshot, fullPage: true });
+              console.log('PUBLISHED_URL=' + page.url());
+              console.log('SCREENSHOT=' + screenshot);
             }
-
-            const publishBtn = page.locator('button:has-text("\u6295\u7a3f\u3059\u308b")').first();
-            await publishBtn.waitFor({ state: 'visible' });
-            await publishBtn.click({ force: true });
-            await Promise.race([
-              page.waitForURL(u => !/\/publish/i.test(String(u)), { timeout: 20000 }).catch(() => {}),
-              page.locator('text=\u6295\u7a3f\u3057\u307e\u3057\u305f').first().waitFor({ timeout: 8000 }).catch(() => {}),
-              page.waitForTimeout(5000),
-            ]);
-
-            await page.screenshot({ path: screenshot, fullPage: true });
-            console.log('PUBLISHED_URL=' + page.url());
-            console.log('SCREENSHOT=' + screenshot);
           } finally {
             try { await page?.close(); } catch {}
             try { await context?.close(); } catch {}
             try { await browser?.close(); } catch {}
           }
           EOF
-          node post.mjs | tee post.log
+          set -o pipefail
+          set +e
+          node post.mjs 2>&1 | tee post.log
+          status=${PIPESTATUS[0]}
+          set -e
           url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
           draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
           shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
           if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
           if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
           if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
+          exit "$status"
 
       - name: Upload screenshot
-        if: ${{ steps.publish.outputs.screenshot != '' }}
+        if: ${{ always() && steps.publish.outputs.screenshot != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: note-screenshot
