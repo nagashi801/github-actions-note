@@ -538,7 +538,42 @@ jobs:
               await insertHTML(page, locator, html);
             }
           }
-          async function fillEditorTitle(page, title) {
+          async function writeDebugSnapshot(page, debugHtml) {
+            const summary = await page.evaluate(() => {
+              const pick = selector => Array.from(document.querySelectorAll(selector)).slice(0, 20).map((el, index) => ({
+                index,
+                tag: el.tagName,
+                id: el.id || '',
+                className: String(el.className || ''),
+                role: el.getAttribute('role') || '',
+                ariaLabel: el.getAttribute('aria-label') || '',
+                placeholder: el.getAttribute('placeholder') || '',
+                dataPlaceholder: el.getAttribute('data-placeholder') || '',
+                contenteditable: el.getAttribute('contenteditable') || '',
+                text: (el.innerText || el.textContent || '').trim().slice(0, 120),
+              }));
+              return {
+                url: location.href,
+                title: document.title,
+                h1: pick('h1'),
+                textarea: pick('textarea'),
+                input: pick('input'),
+                contenteditable: pick('[contenteditable]'),
+                buttons: pick('button'),
+                bodyText: (document.body?.innerText || '').trim().slice(0, 3000),
+              };
+            });
+            fs.writeFileSync(debugHtml, [
+              '<!doctype html><meta charset="utf-8">',
+              '<h1>note editor debug</h1>',
+              `<pre>${JSON.stringify(summary, null, 2).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre>`,
+              '<hr>',
+              await page.content(),
+            ].join('\n'));
+            console.log('DEBUG_HTML=' + debugHtml);
+            console.log('EDITOR_DEBUG_SUMMARY=' + JSON.stringify(summary));
+          }
+          async function fillEditorTitle(page, title, debugHtml) {
             const candidates = [
               'h1[contenteditable="true"]',
               'h1[contenteditable]',
@@ -552,7 +587,12 @@ jobs:
               '[contenteditable="true"][aria-label*="\u30bf\u30a4\u30c8\u30eb"]',
             ];
             const titleBox = page.locator(candidates.join(', ')).first();
-            await titleBox.waitFor({ state: 'visible', timeout: 30000 });
+            try {
+              await titleBox.waitFor({ state: 'visible', timeout: 30000 });
+            } catch (error) {
+              await writeDebugSnapshot(page, debugHtml);
+              throw error;
+            }
             try {
               await titleBox.fill(title);
             } catch {
@@ -574,6 +614,7 @@ jobs:
           const ssDir = path.join(os.tmpdir(), 'note-screenshots');
           fs.mkdirSync(ssDir, { recursive: true });
           const screenshot = path.join(ssDir, `note-post-${Date.now()}.png`);
+          const debugHtml = path.join(ssDir, `note-editor-debug-${Date.now()}.html`);
 
           let browser, context, page;
           try {
@@ -590,7 +631,7 @@ jobs:
               throw new Error(`Not on note editor after navigation. Current URL: ${page.url()}. NOTE_STORAGE_STATE_JSON may be expired or invalid.`);
             }
 
-            await fillEditorTitle(page, title);
+            await fillEditorTitle(page, title, debugHtml);
 
             const bodyBox = await findBodyBox(page);
             await bodyBox.waitFor({ state: 'visible' });
@@ -676,9 +717,11 @@ jobs:
           url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
           draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
           shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
+          debug=$(grep '^DEBUG_HTML=' post.log | tail -n1 | cut -d'=' -f2-)
           if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
           if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
           if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
+          if [ -n "$debug" ]; then echo "debug_html=$debug" >> $GITHUB_OUTPUT; fi
           exit "$status"
 
       - name: Upload screenshot
@@ -687,3 +730,10 @@ jobs:
         with:
           name: note-screenshot
           path: ${{ steps.publish.outputs.screenshot }}
+
+      - name: Upload editor debug
+        if: ${{ always() && steps.publish.outputs.debug_html != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: note-editor-debug
+          path: ${{ steps.publish.outputs.debug_html }}
