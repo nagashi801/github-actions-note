@@ -768,10 +768,10 @@ jobs:
           node post.mjs 2>&1 | tee post.log
           status=${PIPESTATUS[0]}
           set -e
-          url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
-          draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
-          shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
-          debug=$(grep '^DEBUG_HTML=' post.log | tail -n1 | cut -d'=' -f2-)
+          url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2- || true)
+          draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2- || true)
+          shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2- || true)
+          debug=$(grep '^DEBUG_HTML=' post.log | tail -n1 | cut -d'=' -f2- || true)
           if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
           if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
           if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
