@@ -488,6 +488,8 @@ jobs:
           const rawBody = String(rawFinal.body || '');
           const TAGS = process.env.TAGS || '';
           const IS_PUBLIC = String(process.env.IS_PUBLIC || 'false') === 'true';
+          const browserLogs = [];
+          const networkIssues = [];
           if (!fs.existsSync(STATE_PATH)) {
             console.error('storageState not found:', STATE_PATH);
             process.exit(1);
@@ -563,6 +565,8 @@ jobs:
                 bodyText: (document.body?.innerText || '').trim().slice(0, 3000),
               };
             });
+            summary.browserLogs = browserLogs.slice(-100);
+            summary.networkIssues = networkIssues.slice(-100);
             fs.writeFileSync(debugHtml, [
               '<!doctype html><meta charset="utf-8">',
               '<h1>note editor debug</h1>',
@@ -607,6 +611,33 @@ jobs:
             const count = await boxes.count();
             return boxes.first();
           }
+          async function waitForEditorHydration(page, debugHtml) {
+            for (let attempt = 1; attempt <= 4; attempt++) {
+              try {
+                await page.waitForFunction(() => {
+                  const selectors = [
+                    'h1[contenteditable]',
+                    'textarea',
+                    'input',
+                    '[contenteditable]',
+                    'button',
+                    '.ProseMirror',
+                  ];
+                  return selectors.some(selector => document.querySelector(selector));
+                }, { timeout: 45000 });
+                return;
+              } catch {
+                console.warn(`Editor did not hydrate yet; attempt ${attempt}/4`);
+                await page.screenshot({ path: screenshot, fullPage: true }).catch(() => {});
+                if (attempt < 4) {
+                  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+                  await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+                }
+              }
+            }
+            await writeDebugSnapshot(page, debugHtml);
+            throw new Error('note editor stayed on a loading/blank screen. See note-editor-debug artifact for console/network details.');
+          }
 
           const title = sanitizeTitle(rawTitle);
           const body = normalizeMarkdown(rawBody);
@@ -618,10 +649,30 @@ jobs:
 
           let browser, context, page;
           try {
-            browser = await chromium.launch({ headless: true, args: ['--lang=ja-JP'] });
-            context = await browser.newContext({ storageState: STATE_PATH, locale: 'ja-JP' });
+            browser = await chromium.launch({ headless: true, args: ['--lang=ja-JP', '--disable-blink-features=AutomationControlled'] });
+            context = await browser.newContext({
+              storageState: STATE_PATH,
+              locale: 'ja-JP',
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+              viewport: { width: 1365, height: 768 },
+            });
             page = await context.newPage();
+            page.on('console', msg => browserLogs.push({ type: msg.type(), text: msg.text() }));
+            page.on('pageerror', error => browserLogs.push({ type: 'pageerror', text: error.message || String(error) }));
+            page.on('requestfailed', request => networkIssues.push({
+              type: 'requestfailed',
+              url: request.url(),
+              method: request.method(),
+              failure: request.failure()?.errorText || '',
+            }));
+            page.on('response', response => {
+              if (response.status() >= 400) {
+                networkIssues.push({ type: 'response', status: response.status(), url: response.url() });
+              }
+            });
             page.setDefaultTimeout(180000);
+            await page.goto('https://note.com/', { waitUntil: 'domcontentloaded' }).catch(() => {});
+            await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
             await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
             await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
             console.log('CURRENT_URL=' + page.url());
@@ -630,6 +681,7 @@ jobs:
             if (!/editor\.note\.com/.test(page.url())) {
               throw new Error(`Not on note editor after navigation. Current URL: ${page.url()}. NOTE_STORAGE_STATE_JSON may be expired or invalid.`);
             }
+            await waitForEditorHydration(page, debugHtml);
 
             await fillEditorTitle(page, title, debugHtml);
 
