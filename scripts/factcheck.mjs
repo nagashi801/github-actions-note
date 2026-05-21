@@ -17,6 +17,22 @@ const draft = JSON.parse(fs.readFileSync('.note-artifacts/draft.json', 'utf8'));
 const ai = new GoogleGenAI({ apiKey });
 const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
+async function generateJson(system, prompt, temperature = 0.6, tools = undefined) {
+  const response = await ai.models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      systemInstruction: system,
+      temperature,
+      maxOutputTokens: 16000,
+      thinkingConfig: { thinkingBudget: 0 },
+      responseMimeType: 'application/json',
+      ...(tools ? { tools } : {}),
+    },
+  });
+  return extractJsonFlexible(response.text || '');
+}
+
 const system = [
   'You are a Japanese fact-checking editor for note.com articles.',
   'Use Google Search grounding to verify the draft.',
@@ -41,21 +57,37 @@ const prompt = [
   sectionsToMarkdown(draft.sections || []),
 ].join('\n');
 
-const response = await ai.models.generateContent({
-  model,
-  contents: prompt,
-  config: {
-    systemInstruction: system,
-    temperature: 0.3,
-    maxOutputTokens: 16000,
-    thinkingConfig: { thinkingBudget: 0 },
-    tools: [{ googleSearch: {} }],
-  },
-});
-
-const obj = extractJsonFlexible(response.text || '') || draft;
+const obj = await generateJson(system, prompt, 0.3, [{ googleSearch: {} }]) || draft;
 let out = normalizeArticleShape(obj, draft);
 out = ensureImagePrompts(out, draft.title || '');
+
+const styleSystem = [
+  'You are a Japanese note.com creator who rewrites drafts into warm, friendly, human writing.',
+  'Return only JSON with this shape: {"title": string, "sections": [{"heading": string, "headingLevel": number, "body": string, "imagePrompt": string, "imageAlt": string}], "tags": string[]}.',
+  'Do not change facts, citations, section count, heading order, imagePrompt, imageAlt, or tags.',
+  'Rewrite every section body so the whole article feels friendly and human, not like a report.',
+  'Use direct address to the reader, small emotional reactions, concrete metaphors, and conversational endings throughout.',
+  'Use occasional "！", "....", emoji, and kaomoji naturally across multiple sections. Examples: ✨, 🔥, 😊, (^▽^)/.',
+  'Do not place all personality in the conclusion. Every section should have at least one warm or human-feeling sentence.',
+  'Avoid stiff phrases: "本レポートでは", "深く掘り下げていきます", "以下の通りです", "重要です" repeated, "可能です" repeated, and textbook-style enumeration without commentary.',
+  'Keep each sentence as its own paragraph with a blank line after every sentence.',
+  'Keep Markdown links exactly when they are present.',
+].join('\n');
+
+const stylePrompt = [
+  'Rewrite this fact-checked article for a friendlier note.com voice.',
+  'The reader should feel like a real person is talking to them, not like they are reading a school report.',
+  '',
+  'Article JSON:',
+  JSON.stringify(out, null, 2),
+].join('\n');
+
+const styledObj = await generateJson(styleSystem, stylePrompt, 0.85);
+if (styledObj) {
+  out = normalizeArticleShape(styledObj, out);
+  out = ensureImagePrompts(out, draft.title || '');
+}
+
 out.body = sectionsToMarkdown(out.sections);
 out.draftBody = out.body;
 
