@@ -47,6 +47,7 @@ permissions:
 env:
   TZ: Asia/Tokyo
   GEMINI_MODEL: gemini-2.5-flash
+  IMAGEN_MODEL: imagen-4.0-generate-001
 
 jobs:
   research:
@@ -67,80 +68,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Gemini SDK
-        run: npm i @google/genai
+      - name: Install dependencies
+        run: npm ci
 
       - name: Research with Gemini
-        run: |
-          cat > research.mjs <<'EOF'
-          import { GoogleGenAI } from '@google/genai';
-          import fs from 'fs';
-
-          const apiKey = process.env.GEMINI_API_KEY || '';
-          if (!apiKey) {
-            console.error('GEMINI_API_KEY secret is not set');
-            process.exit(1);
-          }
-
-          const theme = process.env.THEME || '';
-          const target = process.env.TARGET || '';
-          const today = new Date().toISOString().slice(0, 10);
-          const artifactsDir = '.note-artifacts';
-          fs.mkdirSync(artifactsDir, { recursive: true });
-
-          const ai = new GoogleGenAI({ apiKey });
-          const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-
-          function addCitations(response) {
-            let text = response.text || '';
-            const supports = response.candidates?.[0]?.groundingMetadata?.groundingSupports || [];
-            const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-            const sorted = [...supports].sort((a, b) => (b.segment?.endIndex ?? 0) - (a.segment?.endIndex ?? 0));
-            for (const support of sorted) {
-              const end = support.segment?.endIndex;
-              if (end === undefined || !support.groundingChunkIndices?.length) continue;
-              const links = support.groundingChunkIndices.map(i => {
-                const web = chunks[i]?.web;
-                return web?.uri ? `[${web.title || i + 1}](${web.uri})` : null;
-              }).filter(Boolean);
-              if (links.length) text = text.slice(0, end) + links.join(', ') + text.slice(end);
-            }
-            return text;
-          }
-
-          const system = [
-            'You are an expert researcher for long-form Japanese note.com articles.',
-            'Write in Japanese.',
-            'Prioritize primary sources and official sources.',
-            'Use Markdown links inline for citations.',
-            'Return only the final research report. Do not ask questions.',
-          ].join('\n');
-          const prompt = [
-            'Create a final research report for the following article plan.',
-            'If assumptions are needed, state them briefly in a section named "前提と仮定" and continue.',
-            '',
-            `Theme: ${theme}`,
-            `Target reader: ${target}`,
-            `Current date: ${today}`,
-          ].join('\n');
-
-          const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              systemInstruction: system,
-              temperature: 0.2,
-              maxOutputTokens: 12000,
-              thinkingConfig: { thinkingBudget: 0 },
-              tools: [{ googleSearch: {} }],
-            },
-          });
-
-          const report = addCitations(response);
-          fs.writeFileSync(`${artifactsDir}/research.md`, report || '');
-          fs.writeFileSync(`${artifactsDir}/research_trace.json`, JSON.stringify(response, null, 2));
-          EOF
-          node research.mjs
+        run: node scripts/research.mjs
 
       - name: Collect research
         id: collect
@@ -181,8 +113,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Gemini SDK
-        run: npm i @google/genai
+      - name: Install dependencies
+        run: npm ci
 
       - name: Restore research
         env:
@@ -192,97 +124,7 @@ jobs:
           echo "$RESEARCH_B64" | base64 -d > .note-artifacts/research.md || echo "$RESEARCH_B64" | base64 --decode > .note-artifacts/research.md
 
       - name: Generate draft
-        run: |
-          cat > write.mjs <<'EOF'
-          import { GoogleGenAI } from '@google/genai';
-          import fs from 'fs';
-
-          const apiKey = process.env.GEMINI_API_KEY || '';
-          if (!apiKey) {
-            console.error('GEMINI_API_KEY secret is not set');
-            process.exit(1);
-          }
-
-          const ai = new GoogleGenAI({ apiKey });
-          const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-          const theme = process.env.THEME || '';
-          const target = process.env.TARGET || '';
-          const message = process.env.MESSAGE || '';
-          const cta = process.env.CTA || '';
-          const inputTags = (process.env.INPUT_TAGS || '').split(',').map(s => s.trim()).filter(Boolean);
-          const researchReport = fs.readFileSync('.note-artifacts/research.md', 'utf8');
-
-          function extractJsonFlexible(raw) {
-            const t = String(raw || '').trim().replace(/\u200B/g, '');
-            try { return JSON.parse(t); } catch {}
-            const fence = t.match(/```[a-zA-Z]*\s*([\s\S]*?)\s*```/);
-            if (fence?.[1]) { try { return JSON.parse(fence[1].trim()); } catch {} }
-            const first = t.indexOf('{');
-            const last = t.lastIndexOf('}');
-            if (first !== -1 && last > first) {
-              try { return JSON.parse(t.slice(first, last + 1)); } catch {}
-            }
-            return null;
-          }
-
-          function sanitizeTitle(value) {
-            let s = String(value || '').trim();
-            s = s.replace(/^```[a-zA-Z0-9_-]*\s*$/,'').replace(/^```$/,'');
-            s = s.replace(/^#+\s*/, '');
-            s = s.replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '').replace(/^`+|`+$/g, '');
-            return s || 'タイトル（自動生成）';
-          }
-
-          async function generateJson(system, prompt, temperature = 0.7) {
-            const response = await ai.models.generateContent({
-              model,
-              contents: prompt,
-              config: {
-                systemInstruction: system,
-                temperature,
-                maxOutputTokens: 12000,
-                thinkingConfig: { thinkingBudget: 0 },
-                responseMimeType: 'application/json',
-              },
-            });
-            return extractJsonFlexible(response.text || '');
-          }
-
-          const system = [
-            'You are a professional Japanese note.com long-form article writer.',
-            'Return only JSON with this shape: {"title": string, "draftBody": string, "tags": string[]}.',
-            'The draftBody must be written in Japanese and should be around 6000 to 9000 Japanese characters when possible.',
-            'Use natural headings, short paragraphs, and occasional bullet lists.',
-            'Preserve useful Markdown links from the research report.',
-          ].join('\n');
-
-          const prompt = [
-            `Theme: ${theme}`,
-            `Target reader: ${target}`,
-            `Core message: ${message}`,
-            `CTA: ${cta}`,
-            '',
-            'Research report:',
-            researchReport,
-          ].join('\n');
-
-          let obj = await generateJson(system, prompt, 0.7);
-          if (!obj) {
-            obj = {
-              title: theme || 'タイトル（自動生成）',
-              draftBody: researchReport,
-              tags: [],
-            };
-          }
-
-          const title = sanitizeTitle(obj.title);
-          const draftBody = String(obj.draftBody || researchReport || '').trim();
-          let tags = Array.isArray(obj.tags) ? obj.tags.map(String).filter(Boolean) : [];
-          if (inputTags.length) tags = Array.from(new Set([...tags, ...inputTags]));
-
-          fs.writeFileSync('.note-artifacts/draft.json', JSON.stringify({ title, draftBody, tags }, null, 2));
-          EOF
-          node write.mjs
+        run: node scripts/write.mjs
 
       - name: Collect draft
         id: collect
@@ -321,8 +163,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Gemini SDK
-        run: npm i @google/genai
+      - name: Install dependencies
+        run: npm ci
 
       - name: Restore draft json
         env:
@@ -332,72 +174,7 @@ jobs:
           echo "$DRAFT_JSON_B64" | base64 -d > .note-artifacts/draft.json || echo "$DRAFT_JSON_B64" | base64 --decode > .note-artifacts/draft.json
 
       - name: Fact-check with Gemini
-        run: |
-          cat > factcheck.mjs <<'EOF'
-          import { GoogleGenAI } from '@google/genai';
-          import fs from 'fs';
-
-          const apiKey = process.env.GEMINI_API_KEY || '';
-          if (!apiKey) {
-            console.error('GEMINI_API_KEY secret is not set');
-            process.exit(1);
-          }
-
-          const draft = JSON.parse(fs.readFileSync('.note-artifacts/draft.json', 'utf8'));
-          const ai = new GoogleGenAI({ apiKey });
-          const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-
-          function extractJsonFlexible(raw) {
-            const t = String(raw || '').trim().replace(/\u200B/g, '');
-            try { return JSON.parse(t); } catch {}
-            const fence = t.match(/```[a-zA-Z]*\s*([\s\S]*?)\s*```/);
-            if (fence?.[1]) { try { return JSON.parse(fence[1].trim()); } catch {} }
-            const first = t.indexOf('{');
-            const last = t.lastIndexOf('}');
-            if (first !== -1 && last > first) {
-              try { return JSON.parse(t.slice(first, last + 1)); } catch {}
-            }
-            return null;
-          }
-
-          const system = [
-            'You are a Japanese fact-checking editor.',
-            'Use Google Search grounding to verify the draft.',
-            'Fix unsupported claims, soften uncertain statements, and keep reliable Markdown citations in the body.',
-            'Return only JSON with this shape: {"title": string, "body": string, "tags": string[]}.',
-          ].join('\n');
-
-          const prompt = [
-            'Fact-check and revise this note.com draft.',
-            '',
-            `Title: ${draft.title || ''}`,
-            `Tags: ${(draft.tags || []).join(', ')}`,
-            '',
-            'Draft body:',
-            String(draft.draftBody || ''),
-          ].join('\n');
-
-          const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              systemInstruction: system,
-              temperature: 0.3,
-              maxOutputTokens: 12000,
-              thinkingConfig: { thinkingBudget: 0 },
-              tools: [{ googleSearch: {} }],
-            },
-          });
-
-          const obj = extractJsonFlexible(response.text || '') || {};
-          const out = {
-            title: String(obj.title || draft.title || ''),
-            body: String(obj.body || obj.draftBody || draft.draftBody || '').trim(),
-            tags: Array.isArray(obj.tags) ? obj.tags.map(String) : (Array.isArray(draft.tags) ? draft.tags : []),
-          };
-          fs.writeFileSync('.note-artifacts/final.json', JSON.stringify(out, null, 2));
-          EOF
-          node factcheck.mjs
+        run: node scripts/factcheck.mjs
 
       - name: Upload fact-check artifact
         uses: actions/upload-artifact@v4
@@ -417,9 +194,54 @@ jobs:
           echo "$b64" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+  images:
+    name: Generate section images (Imagen)
+    needs: factcheck
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore final json
+        env:
+          FINAL_B64: ${{ needs.factcheck.outputs.final_b64 }}
+        run: |
+          mkdir -p .note-artifacts
+          test -n "$FINAL_B64" || { echo "final_b64 output is empty"; exit 1; }
+          echo "$FINAL_B64" | base64 -d > .note-artifacts/final.json || echo "$FINAL_B64" | base64 --decode > .note-artifacts/final.json
+
+      - name: Generate one image per heading
+        run: node scripts/generate-images.mjs
+
+      - name: Upload final with image paths
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-with-images
+          path: |
+            .note-artifacts/final.json
+            .note-artifacts/image-manifest.json
+
+      - name: Upload generated images
+        uses: actions/upload-artifact@v4
+        with:
+          name: note-section-images
+          path: .note-artifacts/images/*.png
+
   post:
     name: Post to note.com (Playwright)
-    needs: factcheck
+    needs:
+      - factcheck
+      - images
     if: ${{ github.event.inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     env:
@@ -439,8 +261,20 @@ jobs:
 
       - name: Install Playwright
         run: |
-          npm i playwright marked
+          npm ci
           npx playwright install --with-deps chromium | cat
+
+      - name: Download final json
+        uses: actions/download-artifact@v4
+        with:
+          name: final-with-images
+          path: .note-artifacts
+
+      - name: Download generated images
+        uses: actions/download-artifact@v4
+        with:
+          name: note-section-images
+          path: .note-artifacts/images
 
       - name: Prepare storageState
         id: state
@@ -459,11 +293,8 @@ jobs:
 
       - name: Restore final
         id: draft
-        env:
-          FINAL_B64: ${{ needs.factcheck.outputs.final_b64 }}
         run: |
-          test -n "$FINAL_B64" || { echo "final_b64 output is empty"; exit 1; }
-          echo "$FINAL_B64" | base64 -d > final.json || echo "$FINAL_B64" | base64 --decode > final.json
+          cp .note-artifacts/final.json final.json
           echo "TITLE=$(jq -r .title final.json)" >> $GITHUB_OUTPUT
           echo "TAGS=$(jq -r '.tags | join(", ")' final.json)" >> $GITHUB_OUTPUT
 
@@ -474,298 +305,11 @@ jobs:
           TAGS: ${{ steps.draft.outputs.TAGS }}
           STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
         run: |
-          cat > post.mjs <<'EOF'
-          import { chromium } from 'playwright';
-          import { marked } from 'marked';
-          import fs from 'fs';
-          import os from 'os';
-          import path from 'path';
-
-          const STATE_PATH = process.env.STATE_PATH;
-          const START_URL = process.env.START_URL || 'https://editor.note.com/new';
-          const rawFinal = JSON.parse(fs.readFileSync('final.json', 'utf8'));
-          const rawTitle = process.env.TITLE || rawFinal.title || '';
-          const rawBody = String(rawFinal.body || '');
-          const TAGS = process.env.TAGS || '';
-          const IS_PUBLIC = String(process.env.IS_PUBLIC || 'false') === 'true';
-          const browserLogs = [];
-          const networkIssues = [];
-          if (!fs.existsSync(STATE_PATH)) {
-            console.error('storageState not found:', STATE_PATH);
-            process.exit(1);
-          }
-
-          function sanitizeTitle(t) {
-            let s = String(t || '').trim();
-            s = s.replace(/^```[a-zA-Z0-9_-]*\s*$/,'').replace(/^```$/,'');
-            s = s.replace(/^#+\s*/, '').replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '').replace(/^`+|`+$/g, '');
-            return s || '\u30bf\u30a4\u30c8\u30eb\uff08\u81ea\u52d5\u751f\u6210\uff09';
-          }
-          function normalizeMarkdown(md) {
-            return String(md || '')
-              .replace(/^\s*[\u2022\u30fb]\s?/gm, '- ')
-              .replace(/\u200B/g, '')
-              .trim();
-          }
-          async function insertHTML(page, locator, html) {
-            await locator.click();
-            await locator.evaluate((el, html) => {
-              el.focus();
-              const sel = window.getSelection();
-              const range = document.createRange();
-              range.selectNodeContents(el);
-              range.collapse(false);
-              sel.removeAllRanges();
-              sel.addRange(range);
-              document.execCommand('insertHTML', false, html);
-              el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertHTML', data: html }));
-            }, html);
-          }
-          async function pasteHTML(page, context, locator, html, plain) {
-            await locator.click();
-            try {
-              const origin = new URL(START_URL).origin;
-              await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
-              await page.evaluate(async ({ html, plain }) => {
-                const item = new ClipboardItem({
-                  'text/html': new Blob([html], { type: 'text/html' }),
-                  'text/plain': new Blob([plain], { type: 'text/plain' }),
-                });
-                await navigator.clipboard.write([item]);
-              }, { html, plain });
-              await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
-              await page.waitForTimeout(500);
-            } catch (error) {
-              console.warn('Clipboard paste failed; falling back to insertHTML:', error?.message || error);
-              await insertHTML(page, locator, html);
-            }
-          }
-          async function writeDebugSnapshot(page, debugHtml) {
-            const summary = await page.evaluate(() => {
-              const pick = selector => Array.from(document.querySelectorAll(selector)).slice(0, 20).map((el, index) => ({
-                index,
-                tag: el.tagName,
-                id: el.id || '',
-                className: String(el.className || ''),
-                role: el.getAttribute('role') || '',
-                ariaLabel: el.getAttribute('aria-label') || '',
-                placeholder: el.getAttribute('placeholder') || '',
-                dataPlaceholder: el.getAttribute('data-placeholder') || '',
-                contenteditable: el.getAttribute('contenteditable') || '',
-                text: (el.innerText || el.textContent || '').trim().slice(0, 120),
-              }));
-              return {
-                url: location.href,
-                title: document.title,
-                h1: pick('h1'),
-                textarea: pick('textarea'),
-                input: pick('input'),
-                contenteditable: pick('[contenteditable]'),
-                buttons: pick('button'),
-                bodyText: (document.body?.innerText || '').trim().slice(0, 3000),
-              };
-            });
-            summary.browserLogs = browserLogs.slice(-100);
-            summary.networkIssues = networkIssues.slice(-100);
-            fs.writeFileSync(debugHtml, [
-              '<!doctype html><meta charset="utf-8">',
-              '<h1>note editor debug</h1>',
-              `<pre>${JSON.stringify(summary, null, 2).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre>`,
-              '<hr>',
-              await page.content(),
-            ].join('\n'));
-            console.log('DEBUG_HTML=' + debugHtml);
-            console.log('EDITOR_DEBUG_SUMMARY=' + JSON.stringify(summary));
-          }
-          async function fillEditorTitle(page, title, debugHtml) {
-            const candidates = [
-              'h1[contenteditable="true"]',
-              'h1[contenteditable]',
-              '[data-testid*="title"]',
-              '[class*="title"][contenteditable="true"]',
-              'textarea[placeholder*="\u30bf\u30a4\u30c8\u30eb"]',
-              'textarea[aria-label*="\u30bf\u30a4\u30c8\u30eb"]',
-              'input[placeholder*="\u30bf\u30a4\u30c8\u30eb"]',
-              'textarea',
-              '[contenteditable="true"][data-placeholder*="\u30bf\u30a4\u30c8\u30eb"]',
-              '[contenteditable="true"][aria-label*="\u30bf\u30a4\u30c8\u30eb"]',
-            ];
-            const titleBox = page.locator(candidates.join(', ')).first();
-            try {
-              await titleBox.waitFor({ state: 'visible', timeout: 30000 });
-            } catch (error) {
-              await writeDebugSnapshot(page, debugHtml);
-              throw error;
-            }
-            try {
-              await titleBox.fill(title);
-            } catch {
-              await titleBox.click();
-              await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-              await page.keyboard.type(title);
-            }
-          }
-          async function findBodyBox(page) {
-            const boxes = page.locator('.ProseMirror[contenteditable="true"], div[contenteditable="true"][role="textbox"], div[contenteditable="true"]').filter({ hasNot: page.locator('h1') });
-            await boxes.first().waitFor({ state: 'visible', timeout: 30000 });
-            const count = await boxes.count();
-            return boxes.first();
-          }
-          async function waitForEditorHydration(page, debugHtml) {
-            for (let attempt = 1; attempt <= 4; attempt++) {
-              try {
-                await page.waitForFunction(() => {
-                  const selectors = [
-                    'h1[contenteditable]',
-                    'textarea',
-                    'input',
-                    '[contenteditable]',
-                    'button',
-                    '.ProseMirror',
-                  ];
-                  return selectors.some(selector => document.querySelector(selector));
-                }, { timeout: 45000 });
-                return;
-              } catch {
-                console.warn(`Editor did not hydrate yet; attempt ${attempt}/4`);
-                await page.screenshot({ path: screenshot, fullPage: true }).catch(() => {});
-                if (attempt < 4) {
-                  await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
-                  await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
-                }
-              }
-            }
-            await writeDebugSnapshot(page, debugHtml);
-            throw new Error('note editor stayed on a loading/blank screen. See note-editor-debug artifact for console/network details.');
-          }
-
-          const title = sanitizeTitle(rawTitle);
-          const body = normalizeMarkdown(rawBody);
-          const html = String(marked.parse(body, { gfm: true, breaks: false }) || '');
-          const ssDir = process.env.NOTE_DEBUG_DIR || path.join(os.tmpdir(), 'note-screenshots');
-          fs.mkdirSync(ssDir, { recursive: true });
-          const screenshot = path.join(ssDir, 'note-post.png');
-          const debugHtml = path.join(ssDir, 'note-editor-debug.html');
-
-          let browser, context, page;
-          try {
-            browser = await chromium.launch({ headless: true, args: ['--lang=ja-JP', '--disable-blink-features=AutomationControlled'] });
-            context = await browser.newContext({
-              storageState: STATE_PATH,
-              locale: 'ja-JP',
-              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-              viewport: { width: 1365, height: 768 },
-            });
-            page = await context.newPage();
-            page.on('console', msg => browserLogs.push({ type: msg.type(), text: msg.text() }));
-            page.on('pageerror', error => browserLogs.push({ type: 'pageerror', text: error.message || String(error) }));
-            page.on('requestfailed', request => networkIssues.push({
-              type: 'requestfailed',
-              url: request.url(),
-              method: request.method(),
-              failure: request.failure()?.errorText || '',
-            }));
-            page.on('response', response => {
-              if (response.status() >= 400) {
-                networkIssues.push({ type: 'response', status: response.status(), url: response.url() });
-              }
-            });
-            page.setDefaultTimeout(180000);
-            await page.goto('https://note.com/', { waitUntil: 'domcontentloaded' }).catch(() => {});
-            await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
-            await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
-            await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
-            console.log('CURRENT_URL=' + page.url());
-            await page.screenshot({ path: screenshot, fullPage: true });
-            console.log('SCREENSHOT=' + screenshot);
-            if (!/editor\.note\.com/.test(page.url())) {
-              throw new Error(`Not on note editor after navigation. Current URL: ${page.url()}. NOTE_STORAGE_STATE_JSON may be expired or invalid.`);
-            }
-            await waitForEditorHydration(page, debugHtml);
-
-            await fillEditorTitle(page, title, debugHtml);
-
-            const bodyBox = await findBodyBox(page);
-            await bodyBox.waitFor({ state: 'visible' });
-            await pasteHTML(page, context, bodyBox, html, body);
-            await page.waitForFunction(() => {
-              const el = document.querySelector('div[contenteditable="true"][role="textbox"]');
-              return (el?.innerText || el?.textContent || '').trim().length > 0;
-            });
-
-            if (!IS_PUBLIC) {
-              const saveBtn = page.locator('button:has-text("\u4e0b\u66f8\u304d\u4fdd\u5b58"), [aria-label*="\u4e0b\u66f8\u304d\u4fdd\u5b58"]').first();
-              await saveBtn.waitFor({ state: 'visible' });
-              for (let i = 0; i < 30 && !(await saveBtn.isEnabled()); i++) {
-                await page.waitForTimeout(500);
-              }
-              await page.screenshot({ path: screenshot, fullPage: true });
-              console.log('SCREENSHOT=' + screenshot);
-              if (!(await saveBtn.isEnabled())) {
-                throw new Error('Draft save button is visible but still disabled after inserting title and body.');
-              }
-              await Promise.all([
-                Promise.race([
-                  page.waitForURL(url => !String(url).endsWith('/new'), { timeout: 15000 }).catch(() => null),
-                  page.locator('text=\u4fdd\u5b58\u3057\u307e\u3057\u305f').waitFor({ timeout: 15000 }).catch(() => null),
-                ]),
-                saveBtn.click(),
-              ]);
-              const saved = !page.url().endsWith('/new') || await page.locator('text=\u4fdd\u5b58\u3057\u307e\u3057\u305f').count().catch(() => 0);
-              await page.screenshot({ path: screenshot, fullPage: true });
-              if (!saved) {
-                console.log('DRAFT_URL=' + page.url());
-                throw new Error('Draft save click completed, but no saved confirmation or draft URL was detected.');
-              }
-              console.log('DRAFT_URL=' + page.url());
-              console.log('SCREENSHOT=' + screenshot);
-            } else {
-              const proceed = page.locator('button:has-text("\u516c\u958b\u306b\u9032\u3080")').first();
-              await proceed.waitFor({ state: 'visible' });
-              await proceed.click({ force: true });
-
-              await Promise.race([
-                page.waitForURL(/\/publish/i).catch(() => {}),
-                page.locator('button:has-text("\u6295\u7a3f\u3059\u308b")').first().waitFor({ state: 'visible' }).catch(() => {}),
-              ]);
-
-              const tags = TAGS.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
-              if (tags.length) {
-                let tagInput = page.locator('input[placeholder*="\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0"]');
-                if (!(await tagInput.count())) tagInput = page.locator('input[role="combobox"]').first();
-                await tagInput.waitFor({ state: 'visible' });
-                for (const t of tags) {
-                  await tagInput.click();
-                  await tagInput.fill(t);
-                  await page.keyboard.press('Enter');
-                  await page.waitForTimeout(120);
-                }
-              }
-
-              const publishBtn = page.locator('button:has-text("\u6295\u7a3f\u3059\u308b")').first();
-              await publishBtn.waitFor({ state: 'visible' });
-              await publishBtn.click({ force: true });
-              await Promise.race([
-                page.waitForURL(u => !/\/publish/i.test(String(u)), { timeout: 20000 }).catch(() => {}),
-                page.locator('text=\u6295\u7a3f\u3057\u307e\u3057\u305f').first().waitFor({ timeout: 8000 }).catch(() => {}),
-                page.waitForTimeout(5000),
-              ]);
-
-              await page.screenshot({ path: screenshot, fullPage: true });
-              console.log('PUBLISHED_URL=' + page.url());
-              console.log('SCREENSHOT=' + screenshot);
-            }
-          } finally {
-            try { await page?.close(); } catch {}
-            try { await context?.close(); } catch {}
-            try { await browser?.close(); } catch {}
-          }
-          EOF
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/note-debug"
           export NOTE_DEBUG_DIR="$RUNNER_TEMP/note-debug"
           set +e
-          node post.mjs 2>&1 | tee post.log
+          node scripts/post.mjs 2>&1 | tee post.log
           status=${PIPESTATUS[0]}
           set -e
           url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2- || true)

@@ -1,0 +1,189 @@
+export function extractJsonFlexible(raw) {
+  const t = String(raw || '').trim().replace(/\u200B/g, '');
+  try {
+    return JSON.parse(t);
+  } catch {}
+
+  const fence = t.match(/```[a-zA-Z]*\s*([\s\S]*?)\s*```/);
+  if (fence?.[1]) {
+    try {
+      return JSON.parse(fence[1].trim());
+    } catch {}
+  }
+
+  const first = t.indexOf('{');
+  const last = t.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    try {
+      return JSON.parse(t.slice(first, last + 1));
+    } catch {}
+  }
+
+  return null;
+}
+
+export function sanitizeTitle(value) {
+  let s = String(value || '').trim();
+  s = s.replace(/^```[a-zA-Z0-9_-]*\s*$/, '').replace(/^```$/, '');
+  s = s.replace(/^#+\s*/, '');
+  s = s.replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '').replace(/^`+|`+$/g, '');
+  return s || 'タイトル（自動生成）';
+}
+
+export function uniqueTags(tags) {
+  return Array.from(new Set((tags || []).map(String).map(s => s.trim()).filter(Boolean)));
+}
+
+export function splitJapaneseSentences(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map(block => {
+      const trimmed = block.trim();
+      if (!trimmed) return '';
+      if (
+        /^(```|#{1,6}\s|[-*+]\s|\d+\.\s|>\s|\|)/m.test(trimmed) ||
+        trimmed.includes('\n- ') ||
+        trimmed.includes('\n* ')
+      ) {
+        return trimmed;
+      }
+      return trimmed
+        .replace(/([。！？])(?=(?:[「『（(【\[])?[^\s\n])/g, '$1\n\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function stripHeadingMarkup(value) {
+  return String(value || '').replace(/^#{1,6}\s*/, '').trim();
+}
+
+function normalizeSection(section, index) {
+  const heading = stripHeadingMarkup(section?.heading || section?.title || `見出し ${index + 1}`);
+  const headingLevel = Number(section?.headingLevel || section?.level || 2);
+  const level = Number.isFinite(headingLevel) ? Math.min(Math.max(headingLevel, 2), 4) : 2;
+  const body = splitJapaneseSentences(section?.body || section?.content || '');
+  const imagePrompt = String(section?.imagePrompt || section?.image_prompt || '').trim();
+  const imageAlt = String(section?.imageAlt || section?.image_alt || heading).trim();
+
+  return {
+    heading,
+    headingLevel: level,
+    body,
+    imagePrompt,
+    imageAlt,
+    imagePath: section?.imagePath || '',
+  };
+}
+
+export function sectionsFromMarkdown(markdown) {
+  const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+  const sections = [];
+  let current = null;
+
+  for (const line of lines) {
+    const match = line.match(/^(#{2,4})\s+(.+?)\s*$/);
+    if (match) {
+      if (current) sections.push(current);
+      current = {
+        heading: match[2].trim(),
+        headingLevel: match[1].length,
+        bodyLines: [],
+        imagePrompt: '',
+        imageAlt: match[2].trim(),
+      };
+      continue;
+    }
+
+    if (!current) {
+      const content = line.trim();
+      if (!content) continue;
+      current = {
+        heading: 'はじめに',
+        headingLevel: 2,
+        bodyLines: [line],
+        imagePrompt: '',
+        imageAlt: 'はじめに',
+      };
+      continue;
+    }
+
+    current.bodyLines.push(line);
+  }
+
+  if (current) sections.push(current);
+
+  return sections.map((section, index) => normalizeSection({
+    ...section,
+    body: section.bodyLines.join('\n').trim(),
+  }, index));
+}
+
+export function normalizeArticleShape(obj, fallback = {}) {
+  const source = obj && typeof obj === 'object' ? obj : {};
+  const title = sanitizeTitle(source.title || fallback.title || '');
+  const draftBody = String(source.draftBody || source.body || fallback.draftBody || fallback.body || '').trim();
+  const rawSections = Array.isArray(source.sections) ? source.sections : [];
+  let sections = rawSections.map(normalizeSection).filter(section => section.heading);
+
+  if (!sections.length && draftBody) {
+    sections = sectionsFromMarkdown(draftBody);
+  }
+
+  if (!sections.length && fallback.researchReport) {
+    sections = [{
+      heading: title,
+      headingLevel: 2,
+      body: splitJapaneseSentences(fallback.researchReport),
+      imagePrompt: '',
+      imageAlt: title,
+      imagePath: '',
+    }];
+  }
+
+  const tags = uniqueTags(source.tags || fallback.tags || []);
+
+  return {
+    title,
+    draftBody: sectionsToMarkdown(sections),
+    body: sectionsToMarkdown(sections),
+    sections,
+    tags,
+  };
+}
+
+export function sectionsToMarkdown(sections) {
+  return (sections || [])
+    .map(section => {
+      const marks = '#'.repeat(Math.min(Math.max(Number(section.headingLevel || 2), 2), 4));
+      return `${marks} ${stripHeadingMarkup(section.heading)}\n\n${splitJapaneseSentences(section.body)}`.trim();
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+export function ensureImagePrompts(article, theme = '') {
+  return {
+    ...article,
+    sections: article.sections.map((section, index) => {
+      const prompt = String(section.imagePrompt || '').trim() || [
+        'Japanese note.com article illustration.',
+        `Article theme: ${theme || article.title}.`,
+        `Section heading: ${section.heading}.`,
+        'Create one vivid, emotionally resonant image that directly represents this section.',
+        'Use a friendly AI/personified creative assistant motif when appropriate.',
+        'No text, no letters, no logos, no UI screenshots.',
+        'Warm, polished digital illustration, expressive composition, 16:9 landscape.',
+      ].join(' ');
+
+      return {
+        ...section,
+        imagePrompt: prompt,
+        imageAlt: section.imageAlt || `${index + 1}. ${section.heading}`,
+      };
+    }),
+  };
+}

@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "marked": "^18.0.4",
     "playwright": "^1.55.1"
   }
 }
