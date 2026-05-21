@@ -36,17 +36,35 @@ function renderMarkdown(md) {
   return String(marked.parse(normalizeMarkdown(md), { gfm: true, breaks: false }) || '');
 }
 
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[c]));
+}
+
+function renderSectionHtml(segment) {
+  if (segment.html) return segment.html;
+  const level = Math.min(Math.max(Number(segment.headingLevel || 2), 2), 4);
+  const heading = `<h${level}>${escapeHtml(segment.heading || '')}</h${level}>`;
+  return `${heading}\n${renderMarkdown(segment.body || '')}`;
+}
+
 function articleSegments(article) {
   const sections = Array.isArray(article.sections) ? article.sections : [];
   if (!sections.length) {
-    return [{ markdown: article.body || article.draftBody || '', imagePath: '', imageAlt: '' }];
+    return [{ html: renderMarkdown(article.body || article.draftBody || ''), imagePath: '', imageAlt: '' }];
   }
 
   return sections.map(section => {
     const level = Math.min(Math.max(Number(section.headingLevel || 2), 2), 4);
-    const heading = `${'#'.repeat(level)} ${section.heading || ''}`;
     return {
-      markdown: `${heading}\n\n${section.body || ''}`.trim(),
+      heading: section.heading || '',
+      headingLevel: level,
+      body: section.body || '',
       imagePath: section.imagePath || '',
       imageAlt: section.imageAlt || section.heading || '',
     };
@@ -69,29 +87,14 @@ async function focusEditorEnd(locator) {
 async function insertHTML(locator, html) {
   await focusEditorEnd(locator);
   await locator.evaluate((el, html) => {
-    document.execCommand('insertHTML', false, html);
+    document.execCommand('insertHTML', false, `${html}<p><br></p>`);
     el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertHTML', data: html }));
   }, html);
 }
 
 async function pasteHTML(page, context, locator, html, plain) {
-  await focusEditorEnd(locator);
-  try {
-    const origin = new URL(START_URL).origin;
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
-    await page.evaluate(async ({ html, plain }) => {
-      const item = new ClipboardItem({
-        'text/html': new Blob([html], { type: 'text/html' }),
-        'text/plain': new Blob([plain], { type: 'text/plain' }),
-      });
-      await navigator.clipboard.write([item]);
-    }, { html, plain });
-    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
-    await page.waitForTimeout(500);
-  } catch (error) {
-    console.warn('Clipboard paste failed; falling back to insertHTML:', error?.message || error);
-    await insertHTML(locator, html);
-  }
+  await insertHTML(locator, html);
+  await page.waitForTimeout(300);
 }
 
 async function pasteImage(page, context, locator, imagePath, alt) {
@@ -113,6 +116,10 @@ async function pasteImage(page, context, locator, imagePath, alt) {
   }, { data });
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
   await page.waitForTimeout(2000);
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.keyboard.press('ArrowRight').catch(() => {});
+  await page.keyboard.press('Enter').catch(() => {});
+  await page.waitForTimeout(500);
 }
 
 async function writeDebugSnapshot(page, debugHtml) {
@@ -268,8 +275,8 @@ try {
   await bodyBox.waitFor({ state: 'visible' });
   const initialImages = await page.locator('img').count().catch(() => 0);
   for (const segment of segments) {
-    const html = renderMarkdown(segment.markdown);
-    await pasteHTML(page, context, bodyBox, html, segment.markdown);
+    const html = renderSectionHtml(segment);
+    await pasteHTML(page, context, bodyBox, html, segment.body || '');
     await pasteImage(page, context, bodyBox, segment.imagePath, segment.imageAlt);
   }
 
@@ -294,6 +301,15 @@ try {
       await writeDebugSnapshot(page, debugHtml);
       throw new Error(`Expected ${expectedImages} inserted images in the editor, but detected ${insertedImages}.`);
     }
+  }
+
+  const rawMarkdownHeadings = await page.evaluate(() => {
+    const el = document.querySelector('div[contenteditable="true"][role="textbox"], .ProseMirror[contenteditable="true"], div[contenteditable="true"]');
+    return (el?.innerText || el?.textContent || '').split('\n').filter(line => /^#{2,}\s/.test(line.trim())).slice(0, 5);
+  });
+  if (rawMarkdownHeadings.length) {
+    await writeDebugSnapshot(page, debugHtml);
+    throw new Error(`Raw Markdown headings were inserted instead of rich headings: ${rawMarkdownHeadings.join(' / ')}`);
   }
 
   if (!IS_PUBLIC) {
