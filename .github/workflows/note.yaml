@@ -220,7 +220,7 @@ jobs:
           test -n "$FINAL_B64" || { echo "final_b64 output is empty"; exit 1; }
           echo "$FINAL_B64" | base64 -d > .note-artifacts/final.json || echo "$FINAL_B64" | base64 --decode > .note-artifacts/final.json
 
-      - name: Generate one image per heading
+      - name: Generate one image per level-2 heading
         run: node scripts/generate-images.mjs
 
       - name: Upload final with image paths

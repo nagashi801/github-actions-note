@@ -169,7 +169,9 @@ export function ensureImagePrompts(article, theme = '') {
   return {
     ...article,
     sections: article.sections.map((section, index) => {
-      const prompt = String(section.imagePrompt || '').trim() || [
+      const headingLevel = Math.min(Math.max(Number(section.headingLevel || 2), 2), 4);
+      const isImageSection = headingLevel === 2;
+      const prompt = isImageSection ? (String(section.imagePrompt || '').trim() || [
         'Japanese note.com article illustration.',
         `Article theme: ${theme || article.title}.`,
         `Section heading: ${section.heading}.`,
@@ -177,12 +179,14 @@ export function ensureImagePrompts(article, theme = '') {
         'Use a friendly AI/personified creative assistant motif when appropriate.',
         'No text, no letters, no logos, no UI screenshots.',
         'Warm, polished digital illustration, expressive composition, 16:9 landscape.',
-      ].join(' ');
+      ].join(' ')) : '';
 
       return {
         ...section,
+        headingLevel,
         imagePrompt: prompt,
-        imageAlt: section.imageAlt || `${index + 1}. ${section.heading}`,
+        imageAlt: isImageSection ? (section.imageAlt || `${index + 1}. ${section.heading}`) : '',
+        imagePath: isImageSection ? (section.imagePath || '') : '',
       };
     }),
   };

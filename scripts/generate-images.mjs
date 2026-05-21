@@ -21,10 +21,18 @@ const imagesDir = '.note-artifacts/images';
 fs.mkdirSync(imagesDir, { recursive: true });
 
 const manifest = [];
+const imageSections = sections
+  .map((section, sectionIndex) => ({ section, sectionIndex }))
+  .filter(({ section }) => Number(section.headingLevel || 2) === 2);
 
-for (let index = 0; index < sections.length; index++) {
-  const section = sections[index];
-  const filename = `section-${String(index + 1).padStart(2, '0')}.png`;
+if (!imageSections.length) {
+  console.error('final.json does not contain any level-2 sections for image generation');
+  process.exit(1);
+}
+
+for (let imageIndex = 0; imageIndex < imageSections.length; imageIndex++) {
+  const { section, sectionIndex } = imageSections[imageIndex];
+  const filename = `section-${String(imageIndex + 1).padStart(2, '0')}.png`;
   const imagePath = path.join(imagesDir, filename);
   const prompt = [
     section.imagePrompt,
@@ -35,7 +43,7 @@ for (let index = 0; index < sections.length; index++) {
     'No visible text, no letters, no captions, no logos, no watermark-like text.',
   ].filter(Boolean).join('\n');
 
-  console.log(`Generating image ${index + 1}/${sections.length}: ${section.heading}`);
+  console.log(`Generating image ${imageIndex + 1}/${imageSections.length}: ${section.heading}`);
   const response = await ai.models.generateImages({
     model,
     prompt,
@@ -58,13 +66,19 @@ for (let index = 0; index < sections.length; index++) {
   fs.writeFileSync(imagePath, Buffer.from(imageBytes, 'base64'));
   section.imagePath = imagePath;
   manifest.push({
-    sectionIndex: index,
+    sectionIndex,
     heading: section.heading,
     imagePath,
     imageAlt: section.imageAlt || section.heading,
     prompt,
     enhancedPrompt: generated.enhancedPrompt || '',
   });
+}
+
+for (const section of sections) {
+  if (Number(section.headingLevel || 2) !== 2) {
+    section.imagePath = '';
+  }
 }
 
 article.sections = sections;
