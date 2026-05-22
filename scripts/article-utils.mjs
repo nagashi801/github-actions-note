@@ -34,8 +34,31 @@ export function uniqueTags(tags) {
   return Array.from(new Set((tags || []).map(String).map(s => s.trim()).filter(Boolean)));
 }
 
+export function cleanupArticleBody(text) {
+  let s = String(text || '').replace(/\r\n/g, '\n').replace(/\u200B/g, '');
+
+  for (let i = 0; i < 3; i++) {
+    s = s.replace(/([\u3002\uff01\uff1f!?])\n{2,}([\u300d\u300f\u3011\uff09)\]])/g, '$1$2');
+  }
+
+  s = s
+    .split(/\n{2,}/)
+    .map(block => {
+      const trimmed = block.trim();
+      if (!trimmed) return '';
+      if (/^https?:\/\//i.test(trimmed)) return trimmed;
+      const label = trimmed.match(/^([^:\uff1a\n]{1,40})[:\uff1a]$/);
+      if (label) return `#### ${label[1].trim()}`;
+      return trimmed;
+    })
+    .filter(Boolean)
+    .join('\n\n');
+
+  return s.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function splitJapaneseSentences(text) {
-  return String(text || '')
+  const split = String(text || '')
     .replace(/\r\n/g, '\n')
     .split(/\n{2,}/)
     .map(block => {
@@ -55,6 +78,8 @@ export function splitJapaneseSentences(text) {
     })
     .filter(Boolean)
     .join('\n\n');
+
+  return cleanupArticleBody(split);
 }
 
 function stripHeadingMarkup(value) {
