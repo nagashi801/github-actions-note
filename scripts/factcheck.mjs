@@ -18,17 +18,17 @@ const ai = new GoogleGenAI({ apiKey });
 const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 async function generateJson(system, prompt, temperature = 0.6, tools = undefined) {
+  const config = {
+    systemInstruction: system,
+    temperature,
+    maxOutputTokens: 16000,
+    thinkingConfig: { thinkingBudget: 0 },
+    ...(tools ? { tools } : { responseMimeType: 'application/json' }),
+  };
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
-    config: {
-      systemInstruction: system,
-      temperature,
-      maxOutputTokens: 16000,
-      thinkingConfig: { thinkingBudget: 0 },
-      responseMimeType: 'application/json',
-      ...(tools ? { tools } : {}),
-    },
+    config,
   });
   return extractJsonFlexible(response.text || '');
 }
