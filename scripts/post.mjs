@@ -48,7 +48,7 @@ function escapeHtml(value) {
 
 function renderSectionHtml(segment) {
   if (segment.html) return segment.html;
-  const level = Math.min(Math.max(Number(segment.headingLevel || 2), 2), 4);
+  const level = Math.min(Math.max(Number(segment.headingLevel || 2), 2), 3);
   const heading = `<h${level}>${escapeHtml(segment.heading || '')}</h${level}>`;
   return `${heading}\n${renderMarkdown(segment.body || '')}`;
 }
@@ -60,7 +60,7 @@ function articleSegments(article) {
   }
 
   return sections.map(section => {
-    const level = Math.min(Math.max(Number(section.headingLevel || 2), 2), 4);
+    const level = Math.min(Math.max(Number(section.headingLevel || 2), 2), 3);
     return {
       heading: section.heading || '',
       headingLevel: level,

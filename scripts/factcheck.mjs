@@ -39,7 +39,8 @@ const system = [
   'Fix unsupported claims, soften uncertain statements, and keep reliable Markdown citations in the body.',
   'Preserve the warm, human voice, metaphors, occasional emoji/kaomoji, and upbeat closing unless a claim is inaccurate.',
   'Do not collapse sections. Keep one section for every heading.',
-  'Only level-2 sections need imagePrompt. Keep or update one imagePrompt for each level-2 section. Keep imagePrompt empty for level-3 and level-4 subsections.',
+  'Use only level-2 and level-3 headings, because note.com supports only large and small headings.',
+  'Only level-2 sections need imagePrompt. Keep or update one imagePrompt for each level-2 section. Keep imagePrompt empty for level-3 subsections.',
   'Keep each sentence as its own paragraph with a blank line after every sentence.',
   'Return only JSON with this shape: {"title": string, "sections": [{"heading": string, "headingLevel": number, "body": string, "imagePrompt": string, "imageAlt": string}], "tags": string[]}.',
 ].join('\n');
@@ -72,7 +73,7 @@ const styleSystem = [
   'Use emotional pacing across the whole article: short emphasis paragraphs, "..." pauses, exclamation marks, and the Japanese laughter marker "笑" where natural.',
   'Strengthen reader empathy: name the hidden worry, the practical benefit, and the feeling after trying the advice.',
   'Make the article feel specific and psychologically sharp, not generic. Add concrete creator/freelance/publishing situations when useful.',
-  'Do not write label lines ending with ":" or "：". Convert such labels into level-4 headings or fold them into the sentence with a comma.',
+  'Do not write label lines ending with ":" or "：". Convert such labels into level-3 headings or fold them into the sentence with a comma.',
   'Do not insert blank paragraphs between a quote/exclamation and its closing Japanese quote mark.',
   'Avoid stiff phrases: "本レポートでは", "深く掘り下げていきます", "以下の通りです", "重要です" repeated, "可能です" repeated, and textbook-style enumeration without commentary.',
   'Keep each sentence as its own paragraph with a blank line after every sentence.',

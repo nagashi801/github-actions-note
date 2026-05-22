@@ -48,7 +48,7 @@ export function cleanupArticleBody(text) {
       if (!trimmed) return '';
       if (/^https?:\/\//i.test(trimmed)) return trimmed;
       const label = trimmed.match(/^([^:\uff1a\n]{1,40})[:\uff1a]$/);
-      if (label) return `#### ${label[1].trim()}`;
+      if (label) return `### ${label[1].trim()}`;
       return trimmed;
     })
     .filter(Boolean)
@@ -89,7 +89,7 @@ function stripHeadingMarkup(value) {
 function normalizeSection(section, index) {
   const heading = stripHeadingMarkup(section?.heading || section?.title || `見出し ${index + 1}`);
   const headingLevel = Number(section?.headingLevel || section?.level || 2);
-  const level = Number.isFinite(headingLevel) ? Math.min(Math.max(headingLevel, 2), 4) : 2;
+  const level = Number.isFinite(headingLevel) ? Math.min(Math.max(headingLevel, 2), 3) : 2;
   const body = splitJapaneseSentences(section?.body || section?.content || '');
   const imagePrompt = String(section?.imagePrompt || section?.image_prompt || '').trim();
   const imageAlt = String(section?.imageAlt || section?.image_alt || heading).trim();
@@ -110,7 +110,7 @@ export function sectionsFromMarkdown(markdown) {
   let current = null;
 
   for (const line of lines) {
-    const match = line.match(/^(#{2,4})\s+(.+?)\s*$/);
+    const match = line.match(/^(#{2,3})\s+(.+?)\s*$/);
     if (match) {
       if (current) sections.push(current);
       current = {
@@ -183,7 +183,7 @@ export function normalizeArticleShape(obj, fallback = {}) {
 export function sectionsToMarkdown(sections) {
   return (sections || [])
     .map(section => {
-      const marks = '#'.repeat(Math.min(Math.max(Number(section.headingLevel || 2), 2), 4));
+      const marks = '#'.repeat(Math.min(Math.max(Number(section.headingLevel || 2), 2), 3));
       return `${marks} ${stripHeadingMarkup(section.heading)}\n\n${splitJapaneseSentences(section.body)}`.trim();
     })
     .filter(Boolean)
@@ -194,7 +194,7 @@ export function ensureImagePrompts(article, theme = '') {
   return {
     ...article,
     sections: article.sections.map((section, index) => {
-      const headingLevel = Math.min(Math.max(Number(section.headingLevel || 2), 2), 4);
+      const headingLevel = Math.min(Math.max(Number(section.headingLevel || 2), 2), 3);
       const isImageSection = headingLevel === 2;
       const prompt = isImageSection ? (String(section.imagePrompt || '').trim() || [
         'Japanese note.com article illustration.',

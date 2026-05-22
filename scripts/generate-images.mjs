@@ -83,7 +83,7 @@ for (const section of sections) {
 
 article.sections = sections;
 article.body = sections.map(section => {
-  const marks = '#'.repeat(Math.min(Math.max(Number(section.headingLevel || 2), 2), 4));
+  const marks = '#'.repeat(Math.min(Math.max(Number(section.headingLevel || 2), 2), 3));
   return `${marks} ${section.heading}\n\n${section.body}`.trim();
 }).join('\n\n');
 article.draftBody = article.body;
