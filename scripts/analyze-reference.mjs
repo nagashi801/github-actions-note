@@ -8,10 +8,10 @@ fs.mkdirSync(artifactsDir, { recursive: true });
 
 const referenceUrl = String(process.env.REFERENCE_URL || '').trim();
 const referenceMode = String(process.env.REFERENCE_MODE || 'none').trim();
-const originalAngle = String(process.env.ORIGINAL_ANGLE || '').trim();
 const demoTopic = String(process.env.DEMO_TOPIC || '').trim();
-const toolsUsed = String(process.env.TOOLS_USED || '').trim();
-const assetUrls = String(process.env.ASSET_URLS || '').trim();
+const originalAngle = 'Reuse the reference article structure and demonstration rhythm, but change the topic, examples, prompts, wording, claims, and assets.';
+const toolsUsed = 'ChatGPT, Gemini, Kling, CapCut, note';
+const assetUrls = '';
 
 function writeEmpty(reason) {
   const out = {

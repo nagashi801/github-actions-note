@@ -19,14 +19,14 @@ const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const theme = process.env.THEME || '';
 const target = process.env.TARGET || '';
 const message = process.env.MESSAGE || '';
-const cta = process.env.CTA || '';
 const inputTags = (process.env.INPUT_TAGS || '').split(',').map(s => s.trim()).filter(Boolean);
 const researchReport = fs.readFileSync('.note-artifacts/research.md', 'utf8');
 const referenceMode = process.env.REFERENCE_MODE || 'none';
-const originalAngle = process.env.ORIGINAL_ANGLE || '';
 const demoTopic = process.env.DEMO_TOPIC || '';
-const toolsUsed = process.env.TOOLS_USED || '';
-const assetUrls = process.env.ASSET_URLS || '';
+const originalAngle = 'Reuse the reference article structure and demonstration rhythm, but change the topic, examples, prompts, wording, claims, and assets.';
+const toolsUsed = 'ChatGPT, Gemini, Kling, CapCut, note';
+const assetUrls = '';
+const cta = 'Encourage the reader to pick one short-video topic, generate a concrete script and scene prompts, then replace the manual placeholders with their own screenshots, images, and videos.';
 
 let referenceAnalysis = null;
 if (fs.existsSync('.note-artifacts/reference-analysis.json')) {
