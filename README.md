@@ -23,21 +23,21 @@ This repository generates and posts note.com articles from GitHub Actions.
 
 GitHub Actions の `Run workflow` フォームに入力する項目です。
 
-| Input | Required | Meaning | What to write |
-| --- | --- | --- | --- |
-| `theme` | yes | 記事のテーマ、または仮タイトルです。記事全体の方向性を決めます。 | `AIだけで「副業初心者あるある」ショート動画を作ってみた。台本・画像素材の作り方` |
-| `target` | yes | 誰に向けた記事かです。ここが曖昧だと記事もぼんやりします。 | `ショート動画を作りたいけれど、台本や素材作りで止まっているAI副業初心者` |
-| `message` | yes | 記事で一番伝えたい結論です。読者に持ち帰ってほしい考えを書きます。 | `最初から完璧な動画を作ろうとせず、まずはChatGPTで台本を作り、画像生成AIで素材を作ると1本目を形にしやすい` |
-| `cta` | yes | 記事の最後で読者に促す行動です。 | `まずは15秒のショート動画テーマを1つ決めて、3シーン構成の台本をChatGPTに作ってもらってください` |
-| `tags` | no | note に付けたいタグです。カンマ区切りで入力します。 | `AI動画,ショート動画,ChatGPT,画像生成AI,AI副業` |
-| `reference_url` | no | 参考にしたい note 記事のURLです。ログイン状態で読める記事も、`NOTE_STORAGE_STATE_JSON` が有効なら解析できます。 | `https://note.com/genel/n/n5d80af93d97e` |
-| `reference_mode` | yes | 参考記事をどの強さで使うかです。 | 下の「Reference Mode」を参照 |
-| `original_angle` | no | 参考記事と何を変えるかです。盗作にならないように、題材・読者・切り口の差分を書きます。 | `参考記事の実演形式は使うが、題材は浮気復讐系ではなくAI副業初心者向けのショート動画にする` |
-| `demo_topic` | no | 記事内で実際に作って見せるものです。「作ってみた」系ではかなり重要です。 | `ChatGPTで15秒ショート動画の台本を作り、各シーンの画像素材を生成する` |
-| `tools_used` | no | 記事内で使うツールです。カンマ区切りで入力します。 | `ChatGPT,Imagen,CapCut,note` |
-| `asset_urls` | no | すでに用意済みの画像・動画・投稿URLがある場合に入れます。なければ空でOKです。 | `https://...` |
-| `is_public` | yes | `true` なら公開投稿、`false` なら下書き保存です。まずは `false` 推奨です。 | `false` |
-| `dry_run` | yes | `true` なら記事生成だけしてnote投稿をスキップします。動作確認用です。 | `false` |
+| Actions screen label | Input key | Required | Meaning | What to write |
+| --- | --- | --- | --- | --- |
+| `theme / 記事テーマ・仮タイトル` | `theme` | yes | 記事のテーマ、または仮タイトルです。記事全体の方向性を決めます。 | `AIだけで「副業初心者あるある」ショート動画を作ってみた。台本・画像素材の作り方` |
+| `target / 想定読者` | `target` | yes | 誰に向けた記事かです。ここが曖昧だと記事もぼんやりします。 | `ショート動画を作りたいけれど、台本や素材作りで止まっているAI副業初心者` |
+| `message / 記事で一番伝えたいこと` | `message` | yes | 記事で一番伝えたい結論です。読者に持ち帰ってほしい考えを書きます。 | `最初から完璧な動画を作ろうとせず、まずはChatGPTで台本を作り、画像生成AIで素材を作ると1本目を形にしやすい` |
+| `cta / 読者に促す行動` | `cta` | yes | 記事の最後で読者に促す行動です。 | `まずは15秒のショート動画テーマを1つ決めて、3シーン構成の台本をChatGPTに作ってもらってください` |
+| `tags / カンマ区切りタグ` | `tags` | no | note に付けたいタグです。カンマ区切りで入力します。 | `AI動画,ショート動画,ChatGPT,画像生成AI,AI副業` |
+| `reference_url / 参考note URL` | `reference_url` | no | 参考にしたい note 記事のURLです。ログイン状態で読める記事も、`NOTE_STORAGE_STATE_JSON` が有効なら解析できます。 | `https://note.com/genel/n/n5d80af93d97e` |
+| `reference_mode / 参考記事の使い方` | `reference_mode` | yes | 参考記事をどの強さで使うかです。 | 下の「Reference Mode」を参照 |
+| `original_angle / 参考記事との差別化` | `original_angle` | no | 参考記事と何を変えるかです。盗作にならないように、題材・読者・切り口の差分を書きます。 | `参考記事の実演形式は使うが、題材は浮気復讐系ではなくAI副業初心者向けのショート動画にする` |
+| `demo_topic / 記事内で実演する内容` | `demo_topic` | no | 記事内で実際に作って見せるものです。「作ってみた」系ではかなり重要です。 | `ChatGPTで15秒ショート動画の台本を作り、各シーンの画像素材を生成する` |
+| `tools_used / 実演で使うツール` | `tools_used` | no | 記事内で使うツールです。カンマ区切りで入力します。 | `ChatGPT,Imagen,CapCut,note` |
+| `asset_urls / 参照・埋め込み用URL` | `asset_urls` | no | すでに用意済みの画像・動画・投稿URLがある場合に入れます。なければ空でOKです。 | `https://...` |
+| `is_public / 公開投稿する` | `is_public` | yes | `true` なら公開投稿、`false` なら下書き保存です。まずは `false` 推奨です。 | `false` |
+| `dry_run / note投稿をスキップ` | `dry_run` | yes | `true` なら記事生成だけしてnote投稿をスキップします。動作確認用です。 | `false` |
 
 ### Reference Mode
 

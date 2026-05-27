@@ -4,33 +4,33 @@ on:
   workflow_dispatch:
     inputs:
       theme:
-        description: 'Article theme'
+        description: 'theme / 記事テーマ・仮タイトル'
         required: true
         type: string
       target:
-        description: 'Target reader'
+        description: 'target / 想定読者'
         required: true
         type: string
       message:
-        description: 'Core message'
+        description: 'message / 記事で一番伝えたいこと'
         required: true
         type: string
       cta:
-        description: 'Call to action'
+        description: 'cta / 読者に促す行動'
         required: true
         type: string
       tags:
-        description: 'Comma-separated tags'
+        description: 'tags / カンマ区切りタグ'
         required: false
         default: ''
         type: string
       reference_url:
-        description: 'Reference note URL'
+        description: 'reference_url / 参考note URL'
         required: false
         default: ''
         type: string
       reference_mode:
-        description: 'How to use reference article'
+        description: 'reference_mode / 参考記事の使い方'
         required: true
         default: 'none'
         type: choice
@@ -39,27 +39,27 @@ on:
           - structure_only
           - explanation_pattern
       original_angle:
-        description: 'Original angle / differentiation'
+        description: 'original_angle / 参考記事との差別化'
         required: false
         default: ''
         type: string
       demo_topic:
-        description: 'What this article demonstrates'
+        description: 'demo_topic / 記事内で実演する内容'
         required: false
         default: ''
         type: string
       tools_used:
-        description: 'Comma-separated tools used in the demo'
+        description: 'tools_used / 実演で使うツール'
         required: false
         default: ''
         type: string
       asset_urls:
-        description: 'Image/video URLs to reference or embed'
+        description: 'asset_urls / 参照・埋め込み用URL'
         required: false
         default: ''
         type: string
       is_public:
-        description: 'Publish publicly'
+        description: 'is_public / 公開投稿する'
         required: true
         default: 'false'
         type: choice
@@ -67,7 +67,7 @@ on:
           - 'true'
           - 'false'
       dry_run:
-        description: 'Skip posting'
+        description: 'dry_run / note投稿をスキップ'
         required: true
         default: 'false'
         type: choice
