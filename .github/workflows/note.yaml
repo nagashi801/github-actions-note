@@ -67,7 +67,7 @@ permissions:
 env:
   TZ: Asia/Tokyo
   GEMINI_MODEL: gemini-2.5-flash
-  VIDEO_MODEL: gemini-2.0-flash
+  VIDEO_MODEL: gemini-2.5-flash-lite
   IMAGEN_MODEL: imagen-4.0-fast-generate-001
 
 jobs:
