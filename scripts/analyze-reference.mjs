@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { chromium } from 'playwright';
 import fs from 'fs';
+import { withGeminiRetry } from './gemini-utils.mjs';
 
 const artifactsDir = '.note-artifacts';
 fs.mkdirSync(artifactsDir, { recursive: true });
@@ -145,7 +146,7 @@ const prompt = [
   articleText,
 ].join('\n');
 
-const response = await ai.models.generateContent({
+const response = await withGeminiRetry('Gemini reference analysis generateContent', () => ai.models.generateContent({
   model,
   contents: prompt,
   config: {
@@ -155,7 +156,7 @@ const response = await ai.models.generateContent({
     thinkingConfig: { thinkingBudget: 0 },
     responseMimeType: 'application/json',
   },
-});
+}));
 
 let analysis;
 try {

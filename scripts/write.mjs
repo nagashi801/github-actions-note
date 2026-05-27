@@ -6,6 +6,7 @@ import {
   normalizeArticleShape,
   uniqueTags,
 } from './article-utils.mjs';
+import { withGeminiRetry } from './gemini-utils.mjs';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 if (!apiKey) {
@@ -35,7 +36,7 @@ if (fs.existsSync('.note-artifacts/reference-analysis.json')) {
 }
 
 async function generateJson(system, prompt, temperature = 0.7) {
-  const response = await ai.models.generateContent({
+  const response = await withGeminiRetry('Gemini write generateContent', () => ai.models.generateContent({
     model,
     contents: prompt,
     config: {
@@ -45,7 +46,7 @@ async function generateJson(system, prompt, temperature = 0.7) {
       thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: 'application/json',
     },
-  });
+  }));
   return extractJsonFlexible(response.text || '');
 }
 

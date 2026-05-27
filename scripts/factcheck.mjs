@@ -6,6 +6,7 @@ import {
   normalizeArticleShape,
   sectionsToMarkdown,
 } from './article-utils.mjs';
+import { withGeminiRetry } from './gemini-utils.mjs';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 if (!apiKey) {
@@ -25,11 +26,11 @@ async function generateJson(system, prompt, temperature = 0.6, tools = undefined
     thinkingConfig: { thinkingBudget: 0 },
     ...(tools ? { tools } : { responseMimeType: 'application/json' }),
   };
-  const response = await ai.models.generateContent({
+  const response = await withGeminiRetry('Gemini fact-check generateContent', () => ai.models.generateContent({
     model,
     contents: prompt,
     config,
-  });
+  }));
   return extractJsonFlexible(response.text || '');
 }
 

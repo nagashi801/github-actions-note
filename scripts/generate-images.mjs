@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
+import { withGeminiRetry } from './gemini-utils.mjs';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 if (!apiKey) {
@@ -36,7 +37,7 @@ if (!imageSections.length) {
 
 async function generatePng(prompt, label) {
   console.log(`Generating image: ${label}`);
-  const response = await ai.models.generateImages({
+  const response = await withGeminiRetry(`Imagen generateImages: ${label}`, () => ai.models.generateImages({
     model,
     prompt,
     config: {
@@ -46,7 +47,7 @@ async function generatePng(prompt, label) {
       imageSize: '1K',
       includeRaiReason: true,
     },
-  });
+  }));
 
   const generated = response.generatedImages?.[0];
   const imageBytes = generated?.image?.imageBytes;

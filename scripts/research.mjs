@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
+import { withGeminiRetry } from './gemini-utils.mjs';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 if (!apiKey) {
@@ -50,7 +51,7 @@ const prompt = [
   `Current date: ${today}`,
 ].join('\n');
 
-const response = await ai.models.generateContent({
+const response = await withGeminiRetry('Gemini research generateContent', () => ai.models.generateContent({
   model,
   contents: prompt,
   config: {
@@ -60,7 +61,7 @@ const response = await ai.models.generateContent({
     thinkingConfig: { thinkingBudget: 0 },
     tools: [{ googleSearch: {} }],
   },
-});
+}));
 
 const report = addCitations(response);
 fs.writeFileSync(`${artifactsDir}/research.md`, report || '');
