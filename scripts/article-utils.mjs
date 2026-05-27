@@ -55,7 +55,30 @@ export function cleanupArticleBody(text) {
     .filter(Boolean)
     .join('\n\n');
 
-  return s.replace(/\n{3,}/g, '\n\n').trim();
+  return formatInlinePromptExamples(s.replace(/\n{3,}/g, '\n\n').trim());
+}
+
+function formatInlinePromptExamples(text) {
+  return String(text || '')
+    .split('\n')
+    .map(line => {
+      const match = line.match(/^(\s*)((?:ChatGPT|Kling|動画生成AI|画像生成AI|改善後)?プロンプト\d*|Prompt\s*\d*)[:：]\s*(.{45,})$/i);
+      if (!match) return line;
+
+      const [, indent, label, content] = match;
+      const parts = content
+        .split(/(?<=[。.!！?？])\s*/)
+        .map(part => part.trim())
+        .filter(Boolean);
+      if (parts.length < 2) return line;
+
+      return [
+        `${indent}${label}`,
+        '',
+        ...parts.map(part => `${indent}    ${part}`),
+      ].join('\n');
+    })
+    .join('\n');
 }
 
 export function splitJapaneseSentences(text) {
@@ -95,6 +118,16 @@ function stripHeadingMarkup(value) {
 }
 
 function normalizeDemoAsset(asset, sectionIndex, assetIndex) {
+  const raw = [
+    asset?.label,
+    asset?.caption,
+    asset?.prompt,
+    asset?.imagePrompt,
+  ].map(value => String(value || '')).join(' ');
+  if (/(動画|video|スクショ|screenshot|キャプチャ|作業画面|設定画面|タイムライン)/i.test(raw)) {
+    return null;
+  }
+
   const id = String(asset?.id || `s${sectionIndex + 1}_demo${assetIndex + 1}`)
     .trim()
     .replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -112,12 +145,14 @@ function normalizeSection(section, index) {
   const heading = stripHeadingMarkup(section?.heading || section?.title || `見出し ${index + 1}`);
   const headingLevel = Number(section?.headingLevel || section?.level || 2);
   const level = Number.isFinite(headingLevel) ? Math.min(Math.max(headingLevel, 2), 3) : 2;
-  const body = splitJapaneseSentences(section?.body || section?.content || '');
+  let body = splitJapaneseSentences(section?.body || section?.content || '');
   const imagePrompt = String(section?.imagePrompt || section?.image_prompt || '').trim();
   const imageAlt = stripHeadingMarkup(section?.imageAlt || section?.image_alt || heading);
   const demoAssets = Array.isArray(section?.demoAssets)
-    ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset.id && asset.prompt)
+    ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset?.id && asset.prompt)
     : [];
+  const demoAssetIds = new Set(demoAssets.map(asset => asset.id));
+  body = body.replace(/\[\[demo_image:([a-zA-Z0-9_-]+)\]\]/g, (marker, id) => demoAssetIds.has(id) ? marker : '');
 
   return {
     heading,
@@ -221,7 +256,9 @@ export function ensureImagePrompts(article, theme = '') {
     ...article,
     sections: article.sections.map((section, index) => {
       const headingLevel = Math.min(Math.max(Number(section.headingLevel || 2), 2), 3);
-      const isImageSection = headingLevel === 2;
+      const sectionText = `${section.heading || ''}\n${section.body || ''}`;
+      const wantsManualMedia = /\[ここに|動画|Kling|CapCut|編集|BGM|テロップ|書き出し|スクショ|キャプチャ|タイムライン/i.test(sectionText);
+      const isImageSection = headingLevel === 2 && !wantsManualMedia;
       const prompt = isImageSection ? (String(section.imagePrompt || '').trim() || [
         'Japanese note.com article illustration.',
         `Article theme: ${theme || article.title}.`,
@@ -239,7 +276,7 @@ export function ensureImagePrompts(article, theme = '') {
         imageAlt: isImageSection ? (section.imageAlt || `${index + 1}. ${section.heading}`) : '',
         imagePath: isImageSection ? (section.imagePath || '') : '',
         demoAssets: Array.isArray(section.demoAssets)
-          ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset.id && asset.prompt)
+          ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset?.id && asset.prompt)
           : [],
       };
     }),

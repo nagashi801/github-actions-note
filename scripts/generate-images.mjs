@@ -24,15 +24,17 @@ fs.mkdirSync(imagesDir, { recursive: true });
 const manifest = [];
 const imageSections = sections
   .map((section, sectionIndex) => ({ section, sectionIndex }))
-  .filter(({ section }) => Number(section.headingLevel || 2) === 2);
+  .filter(({ section }) => Number(section.headingLevel || 2) === 2 && String(section.imagePrompt || '').trim());
 const demoImageTasks = sections.flatMap((section, sectionIndex) => (
   Array.isArray(section.demoAssets) ? section.demoAssets : []
 ).map((asset, assetIndex) => ({ section, sectionIndex, asset, assetIndex })))
   .filter(({ asset }) => asset.type === 'generated_image' && asset.prompt);
 
-if (!imageSections.length) {
-  console.error('final.json does not contain any level-2 sections for image generation');
-  process.exit(1);
+if (!imageSections.length && !demoImageTasks.length) {
+  console.log('No image prompts found; skipping image generation.');
+  fs.writeFileSync('.note-artifacts/final.json', JSON.stringify(article, null, 2));
+  fs.writeFileSync('.note-artifacts/image-manifest.json', JSON.stringify(manifest, null, 2));
+  process.exit(0);
 }
 
 async function generatePng(prompt, label) {

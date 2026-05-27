@@ -47,6 +47,10 @@ const system = [
   'Only level-2 sections need imagePrompt. Keep or update one imagePrompt for each level-2 section. Keep imagePrompt empty for level-3 subsections.',
   'Keep each sentence as its own paragraph with a blank line after every sentence.',
   'Preserve demoAssets and their [[demo_image:asset_id]] body markers. If a section says an image was generated, it should have a matching demoAssets item.',
+  'Do not add demoAssets for generated videos or workflow screenshots. Videos and screenshots should remain manual placeholder paragraphs such as "[ここにKlingで生成した動画を差し込む]" or "[ここに画像生成AIの作業スクショを添付]".',
+  'Preserve manual placeholder paragraphs in square brackets exactly. They are instructions for the human editor.',
+  'If a how-to explanation is vague, make it concrete with beginner-ready settings, criteria, and copyable wording. Explain video prompt wording, camera motion, telop placement, BGM choice, sound effects, and volume balance when relevant.',
+  'Every prompt shown to readers must be readable across multiple lines as an indented or fenced code block. Never leave a long prompt on a single "プロンプト1:" line.',
   'Return only JSON with this shape: {"title": string, "sections": [{"heading": string, "headingLevel": number, "body": string, "imagePrompt": string, "imageAlt": string, "demoAssets": [{"id": string, "label": string, "prompt": string, "caption": string}]}], "tags": string[]}.',
 ].join('\n');
 
@@ -78,6 +82,8 @@ const styleSystem = [
   'Use emotional pacing across the whole article: short emphasis paragraphs, "..." pauses, exclamation marks, and the Japanese laughter marker "笑" where natural.',
   'Strengthen reader empathy: name the hidden worry, the practical benefit, and the feeling after trying the advice.',
   'Make the article feel specific and psychologically sharp, not generic. Add concrete creator/freelance/publishing situations when useful.',
+  'Do not weaken concrete instructions into generic advice. Keep exact settings, placement rules, BGM criteria, prompt wording, and manual placeholders.',
+  'Keep all prompt examples multi-line and easy to copy.',
   'Do not write label lines ending with ":" or "：". Convert such labels into level-3 headings or fold them into the sentence with a comma.',
   'Do not insert blank paragraphs between a quote/exclamation and its closing Japanese quote mark.',
   'Avoid stiff phrases: "本レポートでは", "深く掘り下げていきます", "以下の通りです", "重要です" repeated, "可能です" repeated, and textbook-style enumeration without commentary.',
