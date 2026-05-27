@@ -55,7 +55,7 @@ export function cleanupArticleBody(text) {
     .filter(Boolean)
     .join('\n\n');
 
-  return normalizeOutputLabels(formatInlinePromptExamples(s.replace(/\n{3,}/g, '\n\n').trim()));
+  return normalizeOutputBlocks(normalizeOutputLabels(formatInlinePromptExamples(s.replace(/\n{3,}/g, '\n\n').trim())));
 }
 
 function formatInlinePromptExamples(text) {
@@ -89,25 +89,111 @@ function normalizeOutputLabels(text) {
     .trim();
 }
 
-export function splitJapaneseSentences(text) {
-  const split = String(text || '')
-    .replace(/\r\n/g, '\n')
-    .split(/\n{2,}/)
-    .map(block => {
-      const trimmed = block.trim();
-      if (!trimmed) return '';
-      if (
-        /^(```|#{1,6}\s|[-*+]\s|\d+\.\s|>\s|\|)/m.test(trimmed) ||
-        trimmed.includes('\n- ') ||
-        trimmed.includes('\n* ')
-      ) {
-        return trimmed;
+function normalizeOutputBlocks(text) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    out.push(line);
+    if (!/^---\s*出力結果\s*---\s*$/.test(line.trim())) continue;
+
+    let j = i + 1;
+    while (j < lines.length && !lines[j].trim()) {
+      out.push(lines[j]);
+      j++;
+    }
+    if (j >= lines.length || /^```/.test(lines[j].trim())) {
+      i = j - 1;
+      continue;
+    }
+
+    out.push('```text');
+    let hasClosingFence = false;
+    for (; j < lines.length; j++) {
+      const next = lines[j];
+      if (/^#{2,3}\s+/.test(next) || /^\[ここに[^\]\n]*(?:画像|動画|スクショ|スクリーンショット|キャプチャ|添付|貼り付け|差し込|挿入)[^\]\n]*\]$/.test(next.trim())) {
+        break;
       }
-      return trimmed
-        .replace(/([。！？])(?=(?:[「『（(【\[])?[^\s\n])/g, '$1\n\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-    })
+      if (/^```/.test(next.trim())) hasClosingFence = true;
+      out.push(next);
+    }
+    if (!hasClosingFence) out.push('```');
+    i = j - 1;
+  }
+
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+export function isCodeOrManualMediaSection(section) {
+  const body = String(section?.body || section?.content || '');
+  const heading = String(section?.heading || section?.title || '');
+  const combined = `${heading}\n${body}`;
+  return (
+    /```/.test(combined) ||
+    /(^|\n)\s*(?:プロンプト|Prompt|ChatGPTへのプロンプト|Kling(?:への)?プロンプト|出力結果)\s*$/im.test(combined) ||
+    /---\s*出力結果\s*---/.test(combined) ||
+    /\[ここに[^\]\n]*(?:画像|動画|スクショ|スクリーンショット|キャプチャ|添付|貼り付け|差し込|挿入)[^\]\n]*\]/.test(combined)
+  );
+}
+
+function splitParagraphSentences(block) {
+  const trimmed = String(block || '').trim();
+  if (!trimmed) return '';
+  if (
+    /^(```|#{1,6}\s|[-*+]\s|\d+\.\s|>\s|\|)/m.test(trimmed) ||
+    trimmed.includes('\n- ') ||
+    trimmed.includes('\n* ') ||
+    /^\[ここに[^\]\n]+\]$/.test(trimmed)
+  ) {
+    return trimmed;
+  }
+
+  return trimmed
+    .replace(/([。！？!?]+[」』）)\]]?)(?=(?:[「『（(【\[])?[^\s\n])/g, '$1\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function splitJapaneseSentences(text) {
+  const blocks = [];
+  let buffer = [];
+  let inFence = false;
+
+  for (const line of String(text || '').replace(/\r\n/g, '\n').split('\n')) {
+    if (/^```/.test(line.trim())) {
+      if (!inFence && buffer.length) {
+        blocks.push({ type: 'text', value: buffer.join('\n') });
+        buffer = [];
+      }
+      buffer.push(line);
+      inFence = !inFence;
+      if (!inFence) {
+        blocks.push({ type: 'code', value: buffer.join('\n') });
+        buffer = [];
+      }
+      continue;
+    }
+
+    if (inFence) {
+      buffer.push(line);
+      continue;
+    }
+
+    if (!line.trim()) {
+      if (buffer.length) {
+        blocks.push({ type: 'text', value: buffer.join('\n') });
+        buffer = [];
+      }
+      continue;
+    }
+
+    buffer.push(line);
+  }
+  if (buffer.length) blocks.push({ type: inFence ? 'code' : 'text', value: buffer.join('\n') });
+
+  const split = blocks
+    .map(block => block.type === 'code' ? block.value.trim() : splitParagraphSentences(block.value))
     .filter(Boolean)
     .join('\n\n');
 
@@ -158,7 +244,8 @@ function normalizeSection(section, index) {
   const headingLevel = Number(section?.headingLevel || section?.level || 2);
   const level = Number.isFinite(headingLevel) ? Math.min(Math.max(headingLevel, 2), 3) : 2;
   let body = splitJapaneseSentences(section?.body || section?.content || '');
-  const imagePrompt = String(section?.imagePrompt || section?.image_prompt || '').trim();
+  const canHaveDecorativeImage = !isCodeOrManualMediaSection({ ...section, heading, body });
+  const imagePrompt = canHaveDecorativeImage ? String(section?.imagePrompt || section?.image_prompt || '').trim() : '';
   const imageAlt = stripHeadingMarkup(section?.imageAlt || section?.image_alt || heading);
   const demoAssets = Array.isArray(section?.demoAssets)
     ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset?.id && asset.prompt)
@@ -172,8 +259,8 @@ function normalizeSection(section, index) {
     headingLevel: level,
     body,
     imagePrompt,
-    imageAlt,
-    imagePath: section?.imagePath || '',
+    imageAlt: canHaveDecorativeImage ? imageAlt : '',
+    imagePath: canHaveDecorativeImage ? (section?.imagePath || '') : '',
     demoAssets,
   };
 }
@@ -269,10 +356,9 @@ export function ensureImagePrompts(article, theme = '') {
     ...article,
     sections: article.sections.map((section, index) => {
       const headingLevel = Math.min(Math.max(Number(section.headingLevel || 2), 2), 3);
-      const prompt = String(section.imagePrompt || '').trim() || [
-        'Polished editorial illustration for a Japanese note article.',
-        `Article theme: ${theme || article.title}.`,
-        `Section heading: ${section.heading}.`,
+      const canHaveDecorativeImage = !isCodeOrManualMediaSection(section);
+      const prompt = canHaveDecorativeImage ? (String(section.imagePrompt || '').trim() || [
+        'Polished editorial illustration for an online creator tutorial article.',
         'Create one visually appealing mood image that matches the atmosphere of this section.',
         'Support the article visually; do not explain the section with text.',
         'Focus on emotion, creator workflow, setting, tools, abstract AI assistance, and visual rhythm.',
@@ -280,14 +366,14 @@ export function ensureImagePrompts(article, theme = '') {
         'Short English labels such as AI, PDCA, STEP, simple numbers, simple icons, charts, waveforms, and abstract UI panels are acceptable.',
         'Device screens may appear, but detailed text must be blurred, tiny, or unreadable. Do not create screenshots or realistic app interfaces.',
         'Warm, polished digital illustration, expressive composition, 16:9 landscape.',
-      ].join(' ');
+      ].join(' ')) : '';
 
       return {
         ...section,
         headingLevel,
         imagePrompt: prompt,
-        imageAlt: section.imageAlt || `${index + 1}. ${section.heading}`,
-        imagePath: section.imagePath || '',
+        imageAlt: canHaveDecorativeImage ? (section.imageAlt || `${index + 1}. ${section.heading}`) : '',
+        imagePath: canHaveDecorativeImage ? (section.imagePath || '') : '',
         demoAssets: Array.isArray(section.demoAssets)
           ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset?.id && asset.prompt)
           : [],

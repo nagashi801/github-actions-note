@@ -3,6 +3,7 @@ import { marked } from 'marked';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { splitJapaneseSentences } from './article-utils.mjs';
 
 const STATE_PATH = process.env.STATE_PATH;
 const START_URL = process.env.START_URL || 'https://editor.note.com/new';
@@ -26,7 +27,7 @@ function sanitizeTitle(t) {
 }
 
 function normalizeMarkdown(md) {
-  return String(md || '')
+  return splitJapaneseSentences(String(md || ''))
     .replace(/^\s*[\u2022\u30fb]\s?/gm, '- ')
     .replace(/\u200B/g, '')
     .trim();

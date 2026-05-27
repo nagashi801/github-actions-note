@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
+import { isCodeOrManualMediaSection } from './article-utils.mjs';
 import { withGeminiRetry } from './gemini-utils.mjs';
 
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -25,7 +26,7 @@ fs.mkdirSync(imagesDir, { recursive: true });
 const manifest = [];
 const imageSections = sections
   .map((section, sectionIndex) => ({ section, sectionIndex }))
-  .filter(({ section }) => [2, 3].includes(Number(section.headingLevel || 2)) && String(section.imagePrompt || '').trim());
+  .filter(({ section }) => [2, 3].includes(Number(section.headingLevel || 2)) && String(section.imagePrompt || '').trim() && !isCodeOrManualMediaSection(section));
 const demoImageTasks = sections.flatMap((section, sectionIndex) => (
   Array.isArray(section.demoAssets) ? section.demoAssets : []
 ).map((asset, assetIndex) => ({ section, sectionIndex, asset, assetIndex })))
@@ -69,16 +70,22 @@ async function generatePng(prompt, label) {
   };
 }
 
-for (let imageIndex = 0; imageIndex < imageSections.length; imageIndex++) {
-  const { section, sectionIndex } = imageSections[imageIndex];
-  const filename = `section-${String(imageIndex + 1).padStart(2, '0')}.png`;
-  const imagePath = path.join(imagesDir, filename);
-  const prompt = [
-    section.imagePrompt,
+function removeJapaneseLines(value) {
+  return String(value || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !/[\u3040-\u30ff\u3400-\u9fff]/.test(line))
+    .join('\n')
+    .trim();
+}
+
+function sectionImagePrompt(section) {
+  const base = removeJapaneseLines(section.imagePrompt);
+  return [
+    base || 'Warm polished editorial illustration for an online creator tutorial. A creator planning a short video workflow with abstract AI assistance, storyboards, simple icons, waveforms, and soft studio lighting.',
     '',
-    `Article title: ${article.title}`,
-    `Section heading: ${section.heading}`,
-    'Create a visually appealing atmospheric image that improves the article layout and matches the mood of this section.',
+    'Create a visually appealing atmospheric image that improves the article layout and matches the mood of this text-heavy section.',
     'The image should support the article visually, not explain it with text.',
     'Avoid Japanese text completely.',
     'Do not include paragraphs, article headings, captions, chat messages, or detailed readable UI text.',
@@ -86,6 +93,25 @@ for (let imageIndex = 0; imageIndex < imageSections.length; imageIndex++) {
     'Device screens may appear, but detailed text should be blurred, tiny, or unreadable.',
     'Do not create screenshots or realistic app interfaces.',
   ].filter(Boolean).join('\n');
+}
+
+function demoPrompt(asset) {
+  const base = removeJapaneseLines(asset.prompt);
+  return [
+    base || 'Polished demo result image for an online creator tutorial, cinematic composition, no readable text.',
+    '',
+    'Create the actual-looking generated result that the article can show as a demo output.',
+    'Avoid Japanese text completely unless the prompt explicitly asks for a document/mockup.',
+    'Do not include paragraphs, article headings, captions, chat messages, or detailed readable UI text.',
+    'Short English labels, simple icons, charts, waveforms, play buttons, and abstract UI panels are acceptable.',
+  ].filter(Boolean).join('\n');
+}
+
+for (let imageIndex = 0; imageIndex < imageSections.length; imageIndex++) {
+  const { section, sectionIndex } = imageSections[imageIndex];
+  const filename = `section-${String(imageIndex + 1).padStart(2, '0')}.png`;
+  const imagePath = path.join(imagesDir, filename);
+  const prompt = sectionImagePrompt(section);
 
   const generated = await generatePng(prompt, `${imageIndex + 1}/${imageSections.length}: ${section.heading}`);
   fs.writeFileSync(imagePath, generated.buffer);
@@ -105,17 +131,7 @@ for (let demoIndex = 0; demoIndex < demoImageTasks.length; demoIndex++) {
   const { section, sectionIndex, asset, assetIndex } = demoImageTasks[demoIndex];
   const filename = `demo-${String(demoIndex + 1).padStart(2, '0')}-${asset.id}.png`;
   const imagePath = path.join(imagesDir, filename);
-  const prompt = [
-    asset.prompt,
-    '',
-    `Article title: ${article.title}`,
-    `Section heading: ${section.heading}`,
-    `Demo image label: ${asset.label}`,
-    'Create the actual-looking generated result that the article can show as a demo output.',
-    'Avoid Japanese text completely unless the prompt explicitly asks for a document/mockup.',
-    'Do not include paragraphs, article headings, captions, chat messages, or detailed readable UI text.',
-    'Short English labels, simple icons, charts, waveforms, play buttons, and abstract UI panels are acceptable.',
-  ].filter(Boolean).join('\n');
+  const prompt = demoPrompt(asset);
 
   const generated = await generatePng(prompt, `demo ${demoIndex + 1}/${demoImageTasks.length}: ${asset.label}`);
   fs.writeFileSync(imagePath, generated.buffer);
