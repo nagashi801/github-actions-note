@@ -24,6 +24,40 @@ on:
         required: false
         default: ''
         type: string
+      reference_url:
+        description: 'Reference note URL'
+        required: false
+        default: ''
+        type: string
+      reference_mode:
+        description: 'How to use reference article'
+        required: true
+        default: 'none'
+        type: choice
+        options:
+          - none
+          - structure_only
+          - explanation_pattern
+      original_angle:
+        description: 'Original angle / differentiation'
+        required: false
+        default: ''
+        type: string
+      demo_topic:
+        description: 'What this article demonstrates'
+        required: false
+        default: ''
+        type: string
+      tools_used:
+        description: 'Comma-separated tools used in the demo'
+        required: false
+        default: ''
+        type: string
+      asset_urls:
+        description: 'Image/video URLs to reference or embed'
+        required: false
+        default: ''
+        type: string
       is_public:
         description: 'Publish publicly'
         required: true
@@ -50,6 +84,66 @@ env:
   IMAGEN_MODEL: imagen-4.0-generate-001
 
 jobs:
+  reference:
+    name: Analyze reference article
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      STATE_JSON: ${{ secrets.NOTE_STORAGE_STATE_JSON }}
+      REFERENCE_URL: ${{ github.event.inputs.reference_url }}
+      REFERENCE_MODE: ${{ github.event.inputs.reference_mode }}
+      ORIGINAL_ANGLE: ${{ github.event.inputs.original_angle }}
+      DEMO_TOPIC: ${{ github.event.inputs.demo_topic }}
+      TOOLS_USED: ${{ github.event.inputs.tools_used }}
+      ASSET_URLS: ${{ github.event.inputs.asset_urls }}
+    outputs:
+      reference_b64: ${{ steps.collect.outputs.reference_b64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        if: ${{ github.event.inputs.reference_url != '' && github.event.inputs.reference_mode != 'none' }}
+        run: npx playwright install --with-deps chromium | cat
+
+      - name: Prepare storageState
+        id: state
+        if: ${{ github.event.inputs.reference_url != '' && github.event.inputs.reference_mode != 'none' }}
+        run: |
+          test -n "$STATE_JSON" || (echo "ERROR: NOTE_STORAGE_STATE_JSON secret is not set" && exit 1)
+          mkdir -p "$RUNNER_TEMP"
+          echo "$STATE_JSON" > "$RUNNER_TEMP/note-state.json"
+          echo "STATE_PATH=$RUNNER_TEMP/note-state.json" >> $GITHUB_OUTPUT
+
+      - name: Analyze reference
+        env:
+          STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
+        run: node scripts/analyze-reference.mjs
+
+      - name: Collect reference analysis
+        id: collect
+        run: |
+          b64=$(base64 -w 0 .note-artifacts/reference-analysis.json 2>/dev/null || base64 .note-artifacts/reference-analysis.json)
+          echo "reference_b64<<EOF" >> $GITHUB_OUTPUT
+          echo "$b64" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Upload reference artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-artifacts
+          path: |
+            .note-artifacts/reference-analysis.json
+            .note-artifacts/reference-analysis.md
+
   research:
     name: Research (Gemini Google Search)
     runs-on: ubuntu-latest
@@ -92,7 +186,9 @@ jobs:
 
   write:
     name: Write (Gemini)
-    needs: research
+    needs:
+      - research
+      - reference
     runs-on: ubuntu-latest
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -101,6 +197,11 @@ jobs:
       MESSAGE: ${{ github.event.inputs.message }}
       CTA: ${{ github.event.inputs.cta }}
       INPUT_TAGS: ${{ github.event.inputs.tags }}
+      REFERENCE_MODE: ${{ github.event.inputs.reference_mode }}
+      ORIGINAL_ANGLE: ${{ github.event.inputs.original_angle }}
+      DEMO_TOPIC: ${{ github.event.inputs.demo_topic }}
+      TOOLS_USED: ${{ github.event.inputs.tools_used }}
+      ASSET_URLS: ${{ github.event.inputs.asset_urls }}
     outputs:
       title: ${{ steps.collect.outputs.title }}
       draft_json_b64: ${{ steps.collect.outputs.draft_json_b64 }}
@@ -122,6 +223,15 @@ jobs:
         run: |
           mkdir -p .note-artifacts
           echo "$RESEARCH_B64" | base64 -d > .note-artifacts/research.md || echo "$RESEARCH_B64" | base64 --decode > .note-artifacts/research.md
+
+      - name: Restore reference analysis
+        env:
+          REFERENCE_B64: ${{ needs.reference.outputs.reference_b64 }}
+        run: |
+          mkdir -p .note-artifacts
+          if [ -n "$REFERENCE_B64" ]; then
+            echo "$REFERENCE_B64" | base64 -d > .note-artifacts/reference-analysis.json || echo "$REFERENCE_B64" | base64 --decode > .note-artifacts/reference-analysis.json
+          fi
 
       - name: Generate draft
         run: node scripts/write.mjs

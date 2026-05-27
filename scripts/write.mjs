@@ -21,6 +21,18 @@ const message = process.env.MESSAGE || '';
 const cta = process.env.CTA || '';
 const inputTags = (process.env.INPUT_TAGS || '').split(',').map(s => s.trim()).filter(Boolean);
 const researchReport = fs.readFileSync('.note-artifacts/research.md', 'utf8');
+const referenceMode = process.env.REFERENCE_MODE || 'none';
+const originalAngle = process.env.ORIGINAL_ANGLE || '';
+const demoTopic = process.env.DEMO_TOPIC || '';
+const toolsUsed = process.env.TOOLS_USED || '';
+const assetUrls = process.env.ASSET_URLS || '';
+
+let referenceAnalysis = null;
+if (fs.existsSync('.note-artifacts/reference-analysis.json')) {
+  try {
+    referenceAnalysis = JSON.parse(fs.readFileSync('.note-artifacts/reference-analysis.json', 'utf8'));
+  } catch {}
+}
 
 async function generateJson(system, prompt, temperature = 0.7) {
   const response = await ai.models.generateContent({
@@ -59,6 +71,10 @@ const system = [
   'Use natural headings and short paragraphs. Preserve useful Markdown links from the research report.',
   'End with an upbeat closing that makes readers feel good, such as inviting them to meet again next time.',
   'Image prompts for level-2 sections must be in English, 16:9, polished digital illustration, no text, no letters, no logos, no UI screenshots.',
+  'When referenceAnalysis.enabled is true, strongly reuse the reference article explanation pattern, demonstration rhythm, prompt/code-block placement, media placement, and failure/improvement flow.',
+  'Do not copy source wording, proprietary prompts, images, videos, or unique examples from the reference article.',
+  'For reference_mode "explanation_pattern", write the new article as a hands-on demo: show what is made, show tools, include prompt/code blocks, show generated results through imagePrompt or user asset URLs, discuss what failed, improve the prompt/process, then move to the next step.',
+  'If asset URLs are provided, place them in the article body where the demo result should appear. Use Markdown image syntax for direct image URLs and a standalone URL paragraph for videos or social embeds.',
 ].join('\n');
 
 const prompt = [
@@ -66,9 +82,17 @@ const prompt = [
   `Target reader: ${target}`,
   `Core message: ${message}`,
   `CTA: ${cta}`,
+  `Reference mode: ${referenceMode}`,
+  `Original angle / differentiation: ${originalAngle}`,
+  `Demo topic: ${demoTopic}`,
+  `Tools used: ${toolsUsed}`,
+  `Asset URLs: ${assetUrls}`,
   '',
   'Research report:',
   researchReport,
+  '',
+  'Reference analysis blueprint:',
+  referenceAnalysis ? JSON.stringify(referenceAnalysis, null, 2) : 'No reference analysis.',
 ].join('\n');
 
 let obj = await generateJson(system, prompt, 0.75);

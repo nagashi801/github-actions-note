@@ -1,5 +1,6 @@
 # 機密情報
 note-state.json
+.note-artifacts/
 
 # Node.js
 node_modules/
