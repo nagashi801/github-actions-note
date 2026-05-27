@@ -17,7 +17,7 @@ if (!sections.length) {
 }
 
 const ai = new GoogleGenAI({ apiKey });
-const model = process.env.IMAGEN_MODEL || 'imagen-4.0-generate-001';
+const model = process.env.IMAGEN_MODEL || 'imagen-4.0-fast-generate-001';
 const imagesDir = '.note-artifacts/images';
 fs.mkdirSync(imagesDir, { recursive: true });
 
