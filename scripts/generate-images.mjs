@@ -24,7 +24,7 @@ fs.mkdirSync(imagesDir, { recursive: true });
 const manifest = [];
 const imageSections = sections
   .map((section, sectionIndex) => ({ section, sectionIndex }))
-  .filter(({ section }) => Number(section.headingLevel || 2) === 2 && String(section.imagePrompt || '').trim());
+  .filter(({ section }) => [2, 3].includes(Number(section.headingLevel || 2)) && String(section.imagePrompt || '').trim());
 const demoImageTasks = sections.flatMap((section, sectionIndex) => (
   Array.isArray(section.demoAssets) ? section.demoAssets : []
 ).map((asset, assetIndex) => ({ section, sectionIndex, asset, assetIndex })))
@@ -120,12 +120,6 @@ for (let demoIndex = 0; demoIndex < demoImageTasks.length; demoIndex++) {
     prompt,
     enhancedPrompt: generated.enhancedPrompt,
   });
-}
-
-for (const section of sections) {
-  if (Number(section.headingLevel || 2) !== 2) {
-    section.imagePath = '';
-  }
 }
 
 article.sections = sections;

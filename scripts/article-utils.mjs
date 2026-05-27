@@ -55,7 +55,7 @@ export function cleanupArticleBody(text) {
     .filter(Boolean)
     .join('\n\n');
 
-  return formatInlinePromptExamples(s.replace(/\n{3,}/g, '\n\n').trim());
+  return normalizeOutputLabels(formatInlinePromptExamples(s.replace(/\n{3,}/g, '\n\n').trim()));
 }
 
 function formatInlinePromptExamples(text) {
@@ -79,6 +79,14 @@ function formatInlinePromptExamples(text) {
       ].join('\n');
     })
     .join('\n');
+}
+
+function normalizeOutputLabels(text) {
+  return String(text || '')
+    .replace(/---\s*出力開始\s*---\s*/g, '\n\n---出力結果---\n\n')
+    .replace(/---\s*出力結果\s*---\s*(?=\S)/g, '---出力結果---\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export function splitJapaneseSentences(text) {
@@ -118,6 +126,10 @@ function stripHeadingMarkup(value) {
 }
 
 function normalizeDemoAsset(asset, sectionIndex, assetIndex) {
+  if (String(process.env.ENABLE_DEMO_ASSETS || 'false') !== 'true') {
+    return null;
+  }
+
   const raw = [
     asset?.label,
     asset?.caption,
@@ -153,6 +165,7 @@ function normalizeSection(section, index) {
     : [];
   const demoAssetIds = new Set(demoAssets.map(asset => asset.id));
   body = body.replace(/\[\[demo_image:([a-zA-Z0-9_-]+)\]\]/g, (marker, id) => demoAssetIds.has(id) ? marker : '');
+  body = body.replace(/\n{3,}/g, '\n\n').trim();
 
   return {
     heading,
@@ -256,10 +269,7 @@ export function ensureImagePrompts(article, theme = '') {
     ...article,
     sections: article.sections.map((section, index) => {
       const headingLevel = Math.min(Math.max(Number(section.headingLevel || 2), 2), 3);
-      const sectionText = `${section.heading || ''}\n${section.body || ''}`;
-      const wantsManualMedia = /\[ここに|動画|Kling|CapCut|編集|BGM|テロップ|書き出し|スクショ|キャプチャ|タイムライン/i.test(sectionText);
-      const isImageSection = headingLevel === 2 && !wantsManualMedia;
-      const prompt = isImageSection ? (String(section.imagePrompt || '').trim() || [
+      const prompt = String(section.imagePrompt || '').trim() || [
         'Japanese note.com article illustration.',
         `Article theme: ${theme || article.title}.`,
         `Section heading: ${section.heading}.`,
@@ -267,14 +277,14 @@ export function ensureImagePrompts(article, theme = '') {
         'Use a friendly AI/personified creative assistant motif when appropriate.',
         'No text, no letters, no logos, no UI screenshots.',
         'Warm, polished digital illustration, expressive composition, 16:9 landscape.',
-      ].join(' ')) : '';
+      ].join(' ');
 
       return {
         ...section,
         headingLevel,
         imagePrompt: prompt,
-        imageAlt: isImageSection ? (section.imageAlt || `${index + 1}. ${section.heading}`) : '',
-        imagePath: isImageSection ? (section.imagePath || '') : '',
+        imageAlt: section.imageAlt || `${index + 1}. ${section.heading}`,
+        imagePath: section.imagePath || '',
         demoAssets: Array.isArray(section.demoAssets)
           ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset?.id && asset.prompt)
           : [],
