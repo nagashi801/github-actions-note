@@ -53,6 +53,22 @@ function renderSectionHtml(segment) {
   return `${heading}\n${renderMarkdown(segment.body || '')}`;
 }
 
+function splitBodyByDemoMarkers(body) {
+  const parts = [];
+  const pattern = /\[\[demo_image:([a-zA-Z0-9_-]+)\]\]/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = pattern.exec(String(body || '')))) {
+    const before = String(body || '').slice(lastIndex, match.index).trim();
+    if (before) parts.push({ type: 'markdown', markdown: before });
+    parts.push({ type: 'demo_image', id: match[1] });
+    lastIndex = pattern.lastIndex;
+  }
+  const rest = String(body || '').slice(lastIndex).trim();
+  if (rest) parts.push({ type: 'markdown', markdown: rest });
+  return parts.length ? parts : [{ type: 'markdown', markdown: String(body || '') }];
+}
+
 function articleSegments(article) {
   const sections = Array.isArray(article.sections) ? article.sections : [];
   if (!sections.length) {
@@ -67,6 +83,7 @@ function articleSegments(article) {
       body: section.body || '',
       imagePath: section.imagePath || '',
       imageAlt: section.imageAlt || section.heading || '',
+      demoAssets: Array.isArray(section.demoAssets) ? section.demoAssets : [],
     };
   });
 }
@@ -275,8 +292,38 @@ try {
   await bodyBox.waitFor({ state: 'visible' });
   const initialImages = await page.locator('img').count().catch(() => 0);
   for (const segment of segments) {
-    const html = renderSectionHtml(segment);
-    await pasteHTML(page, context, bodyBox, html, segment.body || '');
+    if (segment.html) {
+      await pasteHTML(page, context, bodyBox, segment.html, '');
+      continue;
+    }
+    const level = Math.min(Math.max(Number(segment.headingLevel || 2), 2), 3);
+    await pasteHTML(page, context, bodyBox, `<h${level}>${escapeHtml(segment.heading || '')}</h${level}>`, segment.heading || '');
+    const demoAssetMap = new Map((segment.demoAssets || []).map(asset => [asset.id, asset]));
+    const insertedDemoIds = new Set();
+    for (const part of splitBodyByDemoMarkers(segment.body || '')) {
+      if (part.type === 'markdown') {
+        await pasteHTML(page, context, bodyBox, renderMarkdown(part.markdown), part.markdown);
+      } else if (part.type === 'demo_image') {
+        const asset = demoAssetMap.get(part.id);
+        if (!asset) {
+          console.warn(`Demo image marker has no matching asset: ${part.id}`);
+          continue;
+        }
+        await pasteImage(page, context, bodyBox, asset.imagePath, asset.caption || asset.label || part.id);
+        insertedDemoIds.add(asset.id);
+        if (asset.caption) {
+          await pasteHTML(page, context, bodyBox, `<p><em>${escapeHtml(asset.caption)}</em></p>`, asset.caption);
+        }
+      }
+    }
+    for (const asset of segment.demoAssets || []) {
+      if (!asset.imagePath || insertedDemoIds.has(asset.id)) continue;
+      console.warn(`Demo image asset was not referenced by a marker; appending at section end: ${asset.id}`);
+      await pasteImage(page, context, bodyBox, asset.imagePath, asset.caption || asset.label || asset.id);
+      if (asset.caption) {
+        await pasteHTML(page, context, bodyBox, `<p><em>${escapeHtml(asset.caption)}</em></p>`, asset.caption);
+      }
+    }
     await pasteImage(page, context, bodyBox, segment.imagePath, segment.imageAlt);
   }
 
@@ -285,7 +332,8 @@ try {
     return (el?.innerText || el?.textContent || '').trim().length > 0;
   });
 
-  const expectedImages = segments.filter(segment => segment.imagePath).length;
+  const expectedImages = segments.filter(segment => segment.imagePath).length
+    + segments.reduce((count, segment) => count + (segment.demoAssets || []).filter(asset => asset.imagePath).length, 0);
   if (expectedImages) {
     await page.waitForFunction(
       ({ initialImages, expectedImages }) => document.querySelectorAll('img').length >= initialImages + expectedImages,

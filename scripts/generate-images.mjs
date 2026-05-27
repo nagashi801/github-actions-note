@@ -24,26 +24,18 @@ const manifest = [];
 const imageSections = sections
   .map((section, sectionIndex) => ({ section, sectionIndex }))
   .filter(({ section }) => Number(section.headingLevel || 2) === 2);
+const demoImageTasks = sections.flatMap((section, sectionIndex) => (
+  Array.isArray(section.demoAssets) ? section.demoAssets : []
+).map((asset, assetIndex) => ({ section, sectionIndex, asset, assetIndex })))
+  .filter(({ asset }) => asset.type === 'generated_image' && asset.prompt);
 
 if (!imageSections.length) {
   console.error('final.json does not contain any level-2 sections for image generation');
   process.exit(1);
 }
 
-for (let imageIndex = 0; imageIndex < imageSections.length; imageIndex++) {
-  const { section, sectionIndex } = imageSections[imageIndex];
-  const filename = `section-${String(imageIndex + 1).padStart(2, '0')}.png`;
-  const imagePath = path.join(imagesDir, filename);
-  const prompt = [
-    section.imagePrompt,
-    '',
-    `Article title: ${article.title}`,
-    `Section heading: ${section.heading}`,
-    'Must be suitable as an inline note.com article illustration.',
-    'No visible text, no letters, no captions, no logos, no watermark-like text.',
-  ].filter(Boolean).join('\n');
-
-  console.log(`Generating image ${imageIndex + 1}/${imageSections.length}: ${section.heading}`);
+async function generatePng(prompt, label) {
+  console.log(`Generating image: ${label}`);
   const response = await ai.models.generateImages({
     model,
     prompt,
@@ -60,18 +52,70 @@ for (let imageIndex = 0; imageIndex < imageSections.length; imageIndex++) {
   const imageBytes = generated?.image?.imageBytes;
   if (!imageBytes) {
     const reason = generated?.raiFilteredReason || 'unknown reason';
-    throw new Error(`Image generation failed for section "${section.heading}": ${reason}`);
+    throw new Error(`Image generation failed for "${label}": ${reason}`);
   }
 
-  fs.writeFileSync(imagePath, Buffer.from(imageBytes, 'base64'));
+  return {
+    buffer: Buffer.from(imageBytes, 'base64'),
+    enhancedPrompt: generated.enhancedPrompt || '',
+  };
+}
+
+for (let imageIndex = 0; imageIndex < imageSections.length; imageIndex++) {
+  const { section, sectionIndex } = imageSections[imageIndex];
+  const filename = `section-${String(imageIndex + 1).padStart(2, '0')}.png`;
+  const imagePath = path.join(imagesDir, filename);
+  const prompt = [
+    section.imagePrompt,
+    '',
+    `Article title: ${article.title}`,
+    `Section heading: ${section.heading}`,
+    'Must be suitable as an inline note.com article illustration.',
+    'No visible text, no letters, no captions, no logos, no watermark-like text.',
+  ].filter(Boolean).join('\n');
+
+  const generated = await generatePng(prompt, `${imageIndex + 1}/${imageSections.length}: ${section.heading}`);
+  fs.writeFileSync(imagePath, generated.buffer);
   section.imagePath = imagePath;
   manifest.push({
+    type: 'section',
     sectionIndex,
     heading: section.heading,
     imagePath,
     imageAlt: section.imageAlt || section.heading,
     prompt,
-    enhancedPrompt: generated.enhancedPrompt || '',
+    enhancedPrompt: generated.enhancedPrompt,
+  });
+}
+
+for (let demoIndex = 0; demoIndex < demoImageTasks.length; demoIndex++) {
+  const { section, sectionIndex, asset, assetIndex } = demoImageTasks[demoIndex];
+  const filename = `demo-${String(demoIndex + 1).padStart(2, '0')}-${asset.id}.png`;
+  const imagePath = path.join(imagesDir, filename);
+  const prompt = [
+    asset.prompt,
+    '',
+    `Article title: ${article.title}`,
+    `Section heading: ${section.heading}`,
+    `Demo image label: ${asset.label}`,
+    'Create the actual-looking generated result that the article can show as a demo output.',
+    'No visible text, no captions, no logos, no watermark-like text unless the prompt explicitly asks for a document/mockup.',
+  ].filter(Boolean).join('\n');
+
+  const generated = await generatePng(prompt, `demo ${demoIndex + 1}/${demoImageTasks.length}: ${asset.label}`);
+  fs.writeFileSync(imagePath, generated.buffer);
+  asset.imagePath = imagePath;
+  manifest.push({
+    type: 'demo',
+    sectionIndex,
+    demoAssetIndex: assetIndex,
+    demoAssetId: asset.id,
+    heading: section.heading,
+    label: asset.label,
+    imagePath,
+    imageAlt: asset.caption || asset.label,
+    prompt,
+    enhancedPrompt: generated.enhancedPrompt,
   });
 }
 

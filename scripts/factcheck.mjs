@@ -42,7 +42,8 @@ const system = [
   'Use only level-2 and level-3 headings, because note.com supports only large and small headings.',
   'Only level-2 sections need imagePrompt. Keep or update one imagePrompt for each level-2 section. Keep imagePrompt empty for level-3 subsections.',
   'Keep each sentence as its own paragraph with a blank line after every sentence.',
-  'Return only JSON with this shape: {"title": string, "sections": [{"heading": string, "headingLevel": number, "body": string, "imagePrompt": string, "imageAlt": string}], "tags": string[]}.',
+  'Preserve demoAssets and their [[demo_image:asset_id]] body markers. If a section says an image was generated, it should have a matching demoAssets item.',
+  'Return only JSON with this shape: {"title": string, "sections": [{"heading": string, "headingLevel": number, "body": string, "imagePrompt": string, "imageAlt": string, "demoAssets": [{"id": string, "label": string, "prompt": string, "caption": string}]}], "tags": string[]}.',
 ].join('\n');
 
 const prompt = [
@@ -64,8 +65,8 @@ out = ensureImagePrompts(out, draft.title || '');
 
 const styleSystem = [
   'You are a Japanese note.com creator who rewrites drafts into warm, friendly, human writing.',
-  'Return only JSON with this shape: {"title": string, "sections": [{"heading": string, "headingLevel": number, "body": string, "imagePrompt": string, "imageAlt": string}], "tags": string[]}.',
-  'Do not change facts, citations, section count, heading order, level-2 imagePrompt, imageAlt, or tags.',
+  'Return only JSON with this shape: {"title": string, "sections": [{"heading": string, "headingLevel": number, "body": string, "imagePrompt": string, "imageAlt": string, "demoAssets": [{"id": string, "label": string, "prompt": string, "caption": string}]}], "tags": string[]}.',
+  'Do not change facts, citations, section count, heading order, level-2 imagePrompt, imageAlt, demoAssets, demo image markers, or tags.',
   'Rewrite every section body so the whole article feels friendly and human, not like a report.',
   'Use direct address to the reader, small emotional reactions, concrete metaphors, and conversational endings throughout.',
   'Use occasional "！", "....", emoji, and kaomoji naturally across multiple sections. Examples: ✨, 🔥, 😊, (^▽^)/.',

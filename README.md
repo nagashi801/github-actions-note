@@ -9,7 +9,8 @@ This repository generates and posts note.com articles from GitHub Actions.
 3. Write a structured Japanese long-form draft with Gemini API
 4. Fact-check and revise with Gemini API and Google Search grounding
 5. Generate one image for every level-2 article heading with Imagen
-6. Post to note.com with Playwright, or save as draft
+6. Generate additional demo-result images when the article says an image was actually created
+7. Post to note.com with Playwright, or save as draft
 
 ## Required Secrets
 
@@ -40,6 +41,7 @@ This repository generates and posts note.com articles from GitHub Actions.
 - The workflow uses `imagen-4.0-generate-001` by default via `IMAGEN_MODEL`.
 - Reference analysis extracts reusable article-craft patterns such as explanation order, media placement, prompt/code-block placement, and failure/improvement flow. It should not copy source article wording, assets, or proprietary prompts.
 - Every generated level-2 heading section is expected to have exactly one generated image. Nested subsections such as level-3 headings do not get their own images. The post step fails if the browser does not detect the expected number of inserted images.
+- Hands-on demo articles can include generated result images inside the body. The writer step marks placement with `[[demo_image:asset_id]]`, the image step generates the matching asset, and the post step inserts that actual image at the marker position.
 - Keep Google Cloud billing disabled if you want to stay on the Gemini API free tier. When free quota is exhausted, the workflow should fail with a quota/rate-limit error rather than silently charging you.
 - If note.com changes its editor UI, the Playwright selectors in `.github/workflows/note.yaml` may need adjustment.
 

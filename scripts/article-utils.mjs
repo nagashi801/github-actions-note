@@ -86,6 +86,20 @@ function stripHeadingMarkup(value) {
   return String(value || '').replace(/^#{1,6}\s*/, '').trim();
 }
 
+function normalizeDemoAsset(asset, sectionIndex, assetIndex) {
+  const id = String(asset?.id || `s${sectionIndex + 1}_demo${assetIndex + 1}`)
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+  return {
+    id,
+    type: 'generated_image',
+    label: String(asset?.label || `生成結果 ${assetIndex + 1}`).trim(),
+    prompt: String(asset?.prompt || asset?.imagePrompt || '').trim(),
+    caption: String(asset?.caption || asset?.imageAlt || asset?.label || '').trim(),
+    imagePath: String(asset?.imagePath || '').trim(),
+  };
+}
+
 function normalizeSection(section, index) {
   const heading = stripHeadingMarkup(section?.heading || section?.title || `見出し ${index + 1}`);
   const headingLevel = Number(section?.headingLevel || section?.level || 2);
@@ -93,6 +107,9 @@ function normalizeSection(section, index) {
   const body = splitJapaneseSentences(section?.body || section?.content || '');
   const imagePrompt = String(section?.imagePrompt || section?.image_prompt || '').trim();
   const imageAlt = String(section?.imageAlt || section?.image_alt || heading).trim();
+  const demoAssets = Array.isArray(section?.demoAssets)
+    ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset.id && asset.prompt)
+    : [];
 
   return {
     heading,
@@ -101,6 +118,7 @@ function normalizeSection(section, index) {
     imagePrompt,
     imageAlt,
     imagePath: section?.imagePath || '',
+    demoAssets,
   };
 }
 
@@ -212,6 +230,9 @@ export function ensureImagePrompts(article, theme = '') {
         imagePrompt: prompt,
         imageAlt: isImageSection ? (section.imageAlt || `${index + 1}. ${section.heading}`) : '',
         imagePath: isImageSection ? (section.imagePath || '') : '',
+        demoAssets: Array.isArray(section.demoAssets)
+          ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset.id && asset.prompt)
+          : [],
       };
     }),
   };
