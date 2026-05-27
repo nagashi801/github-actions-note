@@ -11,7 +11,7 @@ fs.mkdirSync(artifactsDir, { recursive: true });
 
 const videoUrl = (process.env.VIDEO_URL || '').trim();
 const apiKey = process.env.GEMINI_API_KEY || '';
-const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const model = process.env.VIDEO_MODEL || process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 const maxBytes = Number(process.env.VIDEO_MAX_BYTES || 300 * 1024 * 1024);
 const downloadPath = path.join(artifactsDir, 'source-video');
 
@@ -191,6 +191,7 @@ if (!apiKey) {
 }
 
 const ai = new GoogleGenAI({ apiKey });
+console.log(`VIDEO_MODEL=${model}`);
 const uploaded = await withGeminiRetry('Gemini video file upload', () => ai.files.upload({
   file: downloaded.path,
   config: { mimeType: downloaded.mimeType },
