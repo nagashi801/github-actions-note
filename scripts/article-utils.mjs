@@ -270,12 +270,15 @@ export function ensureImagePrompts(article, theme = '') {
     sections: article.sections.map((section, index) => {
       const headingLevel = Math.min(Math.max(Number(section.headingLevel || 2), 2), 3);
       const prompt = String(section.imagePrompt || '').trim() || [
-        'Japanese note.com article illustration.',
+        'Polished editorial illustration for a Japanese note article.',
         `Article theme: ${theme || article.title}.`,
         `Section heading: ${section.heading}.`,
-        'Create one vivid, emotionally resonant image that directly represents this section.',
-        'Use a friendly AI/personified creative assistant motif when appropriate.',
-        'No text, no letters, no logos, no UI screenshots.',
+        'Create one visually appealing mood image that matches the atmosphere of this section.',
+        'Support the article visually; do not explain the section with text.',
+        'Focus on emotion, creator workflow, setting, tools, abstract AI assistance, and visual rhythm.',
+        'Avoid Japanese text completely. No paragraphs, article headings, captions, chat messages, or detailed readable UI text.',
+        'Short English labels such as AI, PDCA, STEP, simple numbers, simple icons, charts, waveforms, and abstract UI panels are acceptable.',
+        'Device screens may appear, but detailed text must be blurred, tiny, or unreadable. Do not create screenshots or realistic app interfaces.',
         'Warm, polished digital illustration, expressive composition, 16:9 landscape.',
       ].join(' ');
 

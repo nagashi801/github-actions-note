@@ -78,8 +78,13 @@ for (let imageIndex = 0; imageIndex < imageSections.length; imageIndex++) {
     '',
     `Article title: ${article.title}`,
     `Section heading: ${section.heading}`,
-    'Must be suitable as an inline note.com article illustration.',
-    'No visible text, no letters, no captions, no logos, no watermark-like text.',
+    'Create a visually appealing atmospheric image that improves the article layout and matches the mood of this section.',
+    'The image should support the article visually, not explain it with text.',
+    'Avoid Japanese text completely.',
+    'Do not include paragraphs, article headings, captions, chat messages, or detailed readable UI text.',
+    'Short English labels such as AI, PDCA, STEP, simple numbers, simple icons, charts, waveforms, play buttons, and abstract UI panels are acceptable.',
+    'Device screens may appear, but detailed text should be blurred, tiny, or unreadable.',
+    'Do not create screenshots or realistic app interfaces.',
   ].filter(Boolean).join('\n');
 
   const generated = await generatePng(prompt, `${imageIndex + 1}/${imageSections.length}: ${section.heading}`);
@@ -107,7 +112,9 @@ for (let demoIndex = 0; demoIndex < demoImageTasks.length; demoIndex++) {
     `Section heading: ${section.heading}`,
     `Demo image label: ${asset.label}`,
     'Create the actual-looking generated result that the article can show as a demo output.',
-    'No visible text, no captions, no logos, no watermark-like text unless the prompt explicitly asks for a document/mockup.',
+    'Avoid Japanese text completely unless the prompt explicitly asks for a document/mockup.',
+    'Do not include paragraphs, article headings, captions, chat messages, or detailed readable UI text.',
+    'Short English labels, simple icons, charts, waveforms, play buttons, and abstract UI panels are acceptable.',
   ].filter(Boolean).join('\n');
 
   const generated = await generatePng(prompt, `demo ${demoIndex + 1}/${demoImageTasks.length}: ${asset.label}`);
