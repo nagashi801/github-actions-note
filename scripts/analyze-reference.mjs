@@ -90,6 +90,7 @@ const system = [
   'Return only JSON.',
   'Do not copy or preserve the source article wording.',
   'Extract the explanation pattern, demonstration rhythm, media placement, prompt/code-block usage, failure/improvement flow, and CTA style.',
+  'Pay special attention to paragraph rhythm, heading style, how prompt labels are shown, how screenshots/images are placed, and how each step moves from action to result.',
   'The downstream article may strongly reuse the explanation pattern and granularity, but must use a different topic, examples, wording, prompts, images, and claims.',
 ].join('\n');
 
@@ -134,8 +135,10 @@ const prompt = [
       },
     ],
     toneRules: ['string'],
+    paragraphRules: ['string'],
     mediaPlan: ['string'],
     promptBlockPlan: ['string'],
+    stepByStepImitationNotes: ['string'],
     doNotCopy: ['string'],
   }, null, 2),
   '',

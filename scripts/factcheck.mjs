@@ -57,10 +57,13 @@ const system = [
   'For imagePrompt, avoid Japanese text completely. Do not include paragraphs, article headings, captions, chat messages, or detailed readable UI text.',
   'For imagePrompt, short English labels such as AI, PDCA, STEP, simple numbers, simple icons, charts, waveforms, and abstract UI panels are acceptable.',
   'For imagePrompt, device screens may appear, but detailed text should be blurred, tiny, or unreadable. Do not create screenshots or realistic app interfaces.',
+  'If the draft uses reference_mode explanation_pattern, preserve and strengthen the reference-like structure: Step headings, prompt label, code block, output/result block, screenshot or media placeholder, then short practical tip.',
+  'Do not compress hands-on tool steps into a summary. Expand them into operation-level instructions such as open, select, upload, set duration/quality/aspect, paste prompt, generate, check, and save.',
   'Every prompt shown to readers must be readable across multiple lines as an indented or fenced code block. Never leave a long prompt on a single "プロンプト1:" line.',
   'Inside prompt examples, use Markdown headings such as "## 動画の目的" and "## 出力形式". Do not use bold markers such as "**動画の目的**" as section dividers inside prompts.',
   'When showing model output, separate the prompt block and output block into different paragraphs. Use a standalone label like "---出力結果---" followed by a blank line, then put the entire output result inside a fenced code block.',
   'For Kling examples, match the real workflow: first upload the start image, then choose Image to Video, duration, quality/aspect options, then enter only the motion prompt. Do not write a fake combined prompt like "Upload Image: ... Prompt: ...".',
+  'For Kling examples, include separate setting lines for mode, start image, duration, quality, aspect ratio, and number of generations. Then show the motion prompt in a fenced code block. Include a manual placeholder for the settings screenshot and a manual placeholder for the generated video.',
   'Return only JSON with this shape: {"title": string, "sections": [{"heading": string, "headingLevel": number, "body": string, "imagePrompt": string, "imageAlt": string, "demoAssets": [{"id": string, "label": string, "prompt": string, "caption": string}]}], "tags": string[]}.',
 ].join('\n');
 
@@ -97,6 +100,8 @@ const styleSystem = [
   'Keep prompt dividers as Markdown headings inside code blocks, not bold labels.',
   'Keep output result examples inside fenced code blocks after a standalone "---出力結果---" label.',
   'Keep Kling workflow examples separated into start image, mode, settings, and motion prompt.',
+  'Keep reference-like Step article rhythm when present: short explanation, exact input, result, media placeholder, and one practical note. Do not rewrite it into a generic tutorial.',
+  'Do not write generic section names such as "シーンごとの動画生成チャレンジ！". Use concrete Step headings and operation-level subheadings.',
   'Do not write label lines ending with ":" or "：". Convert such labels into level-3 headings or fold them into the sentence with a comma.',
   'Do not insert blank paragraphs between a quote/exclamation and its closing Japanese quote mark.',
   'Avoid stiff phrases: "本レポートでは", "深く掘り下げていきます", "以下の通りです", "重要です" repeated, "可能です" repeated, and textbook-style enumeration without commentary.',
