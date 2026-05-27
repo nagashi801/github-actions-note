@@ -351,10 +351,21 @@ try {
     }
   }
 
-  const rawMarkdownHeadings = await page.evaluate(() => {
+  const expectedHeadingText = segments
+    .map(segment => String(segment.heading || '').trim())
+    .filter(Boolean);
+  const rawMarkdownHeadings = await page.evaluate(expectedHeadingText => {
+    const expected = new Set(expectedHeadingText);
     const el = document.querySelector('div[contenteditable="true"][role="textbox"], .ProseMirror[contenteditable="true"], div[contenteditable="true"]');
-    return (el?.innerText || el?.textContent || '').split('\n').filter(line => /^#{2,}\s/.test(line.trim())).slice(0, 5);
-  });
+    return (el?.innerText || el?.textContent || '')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => {
+        const match = line.match(/^#{2,}\s+(.+)$/);
+        return match && expected.has(match[1].trim());
+      })
+      .slice(0, 5);
+  }, expectedHeadingText);
   if (rawMarkdownHeadings.length) {
     await writeDebugSnapshot(page, debugHtml);
     throw new Error(`Raw Markdown headings were inserted instead of rich headings: ${rawMarkdownHeadings.join(' / ')}`);
