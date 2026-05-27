@@ -35,6 +35,13 @@ if (fs.existsSync('.note-artifacts/reference-analysis.json')) {
   } catch {}
 }
 
+let videoAnalysis = null;
+if (fs.existsSync('.note-artifacts/video-analysis.json')) {
+  try {
+    videoAnalysis = JSON.parse(fs.readFileSync('.note-artifacts/video-analysis.json', 'utf8'));
+  } catch {}
+}
+
 async function generateJson(system, prompt, temperature = 0.7) {
   const response = await withGeminiRetry('Gemini write generateContent', () => ai.models.generateContent({
     model,
@@ -130,6 +137,10 @@ const system = [
   'Do not copy wording, proprietary prompts, images, videos, or unique examples from the reference article.',
   'When reference_mode is explanation_pattern, strongly imitate the reference article craft: Step structure, short paragraph rhythm, prompt display, output display, screenshot/image placement, and the "operation -> result -> practical note" flow.',
   'The fixed AI-video workflow template is mandatory for AI video articles. Use it as the concrete procedure layer.',
+  'If videoAnalysis.enabled is true, the video analysis is the source of truth for the demo. Reverse-engineer the article from that video instead of inventing a different video concept.',
+  'When videoAnalysis.enabled is true, preserve the actual scene order, character continuity, tone, narration/telop intent, and visible production result described in videoAnalysis.',
+  'When videoAnalysis.enabled is true, use the fixed workflow to explain how to create that exact kind of video: script prompts, scene image prompts, Kling motion prompts, editing choices, and manual placeholders should all match the analyzed video.',
+  'If videoAnalysis says a detail is unclear, write a manual-check placeholder instead of pretending it is known.',
   'The reference article controls article rhythm and presentation style; the fixed template controls the actual ChatGPT/Gemini/Kling/CapCut operations; the LLM adapts examples and explanations to the theme.',
   'Write every normal sentence as its own paragraph with a blank line after it.',
   'Use short, conversational Japanese paragraphs. Avoid report-like explanations.',
@@ -165,6 +176,9 @@ const prompt = [
   '',
   'Reference analysis blueprint. Use for article rhythm and presentation pattern, especially when reference_mode is explanation_pattern:',
   referenceAnalysis ? JSON.stringify(referenceAnalysis, null, 2) : 'No reference analysis.',
+  '',
+  'Video analysis blueprint. If enabled, this overrides demo_topic for the actual video story and scene flow:',
+  videoAnalysis ? JSON.stringify(videoAnalysis, null, 2) : 'No video analysis.',
 ].join('\n');
 
 let obj = await generateJson(system, prompt, 0.65);

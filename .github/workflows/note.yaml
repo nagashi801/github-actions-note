@@ -39,6 +39,11 @@ on:
         required: false
         default: ''
         type: string
+      video_url:
+        description: 'video_url / 逆算元の動画ファイル共有URL'
+        required: false
+        default: ''
+        type: string
       is_public:
         description: 'is_public / 公開投稿する'
         required: true
@@ -142,11 +147,41 @@ jobs:
             .note-artifacts/research.md
             .note-artifacts/research_trace.json
 
+  video:
+    name: Analyze source video (Gemini)
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      VIDEO_URL: ${{ github.event.inputs.video_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate and analyze video
+        run: node scripts/analyze-video.mjs
+
+      - name: Upload video analysis artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-analysis-artifacts
+          path: |
+            .note-artifacts/video-analysis.json
+            .note-artifacts/video-analysis.md
+
   write:
     name: Write (Gemini)
     needs:
       - research
       - reference
+      - video
     runs-on: ubuntu-latest
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -180,6 +215,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: reference-artifacts
+          path: .note-artifacts
+
+      - name: Download video analysis artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: video-analysis-artifacts
           path: .note-artifacts
 
       - name: Generate draft
