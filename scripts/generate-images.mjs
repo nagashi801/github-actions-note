@@ -18,6 +18,7 @@ if (!sections.length) {
 
 const ai = new GoogleGenAI({ apiKey });
 const model = process.env.IMAGEN_MODEL || 'imagen-4.0-fast-generate-001';
+const canSetImageSize = !/fast/i.test(model);
 const imagesDir = '.note-artifacts/images';
 fs.mkdirSync(imagesDir, { recursive: true });
 
@@ -39,16 +40,20 @@ if (!imageSections.length && !demoImageTasks.length) {
 
 async function generatePng(prompt, label) {
   console.log(`Generating image: ${label}`);
+  const config = {
+    numberOfImages: 1,
+    aspectRatio: '16:9',
+    outputMimeType: 'image/png',
+    includeRaiReason: true,
+  };
+  if (canSetImageSize) {
+    config.imageSize = '1K';
+  }
+
   const response = await withGeminiRetry(`Imagen generateImages: ${label}`, () => ai.models.generateImages({
     model,
     prompt,
-    config: {
-      numberOfImages: 1,
-      aspectRatio: '16:9',
-      outputMimeType: 'image/png',
-      imageSize: '1K',
-      includeRaiReason: true,
-    },
+    config,
   }));
 
   const generated = response.generatedImages?.[0];
