@@ -26,6 +26,7 @@ export function sanitizeTitle(value) {
   let s = String(value || '').trim();
   s = s.replace(/^```[a-zA-Z0-9_-]*\s*$/, '').replace(/^```$/, '');
   s = s.replace(/^#+\s*/, '');
+  s = stripMarkdownLinks(s);
   s = s.replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '').replace(/^`+|`+$/g, '');
   return s || 'タイトル（自動生成）';
 }
@@ -82,8 +83,15 @@ export function splitJapaneseSentences(text) {
   return cleanupArticleBody(split);
 }
 
+function stripMarkdownLinks(value) {
+  return String(value || '').replace(/\[([^\]\n]{1,120})\]\((?:https?:\/\/|\/)[^)]+\)/g, '$1');
+}
+
 function stripHeadingMarkup(value) {
-  return String(value || '').replace(/^#{1,6}\s*/, '').trim();
+  let s = String(value || '').replace(/^#{1,6}\s*/, '').trim();
+  s = stripMarkdownLinks(s);
+  s = s.replace(/https?:\/\/\S+/g, '').replace(/\s{2,}/g, ' ').trim();
+  return s;
 }
 
 function normalizeDemoAsset(asset, sectionIndex, assetIndex) {
@@ -106,7 +114,7 @@ function normalizeSection(section, index) {
   const level = Number.isFinite(headingLevel) ? Math.min(Math.max(headingLevel, 2), 3) : 2;
   const body = splitJapaneseSentences(section?.body || section?.content || '');
   const imagePrompt = String(section?.imagePrompt || section?.image_prompt || '').trim();
-  const imageAlt = String(section?.imageAlt || section?.image_alt || heading).trim();
+  const imageAlt = stripHeadingMarkup(section?.imageAlt || section?.image_alt || heading);
   const demoAssets = Array.isArray(section?.demoAssets)
     ? section.demoAssets.map((asset, assetIndex) => normalizeDemoAsset(asset, index, assetIndex)).filter(asset => asset.id && asset.prompt)
     : [];

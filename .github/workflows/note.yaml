@@ -96,8 +96,6 @@ jobs:
       DEMO_TOPIC: ${{ github.event.inputs.demo_topic }}
       TOOLS_USED: ${{ github.event.inputs.tools_used }}
       ASSET_URLS: ${{ github.event.inputs.asset_urls }}
-    outputs:
-      reference_b64: ${{ steps.collect.outputs.reference_b64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -128,14 +126,6 @@ jobs:
           STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
         run: node scripts/analyze-reference.mjs
 
-      - name: Collect reference analysis
-        id: collect
-        run: |
-          b64=$(base64 -w 0 .note-artifacts/reference-analysis.json 2>/dev/null || base64 .note-artifacts/reference-analysis.json)
-          echo "reference_b64<<EOF" >> $GITHUB_OUTPUT
-          echo "$b64" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Upload reference artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -151,8 +141,6 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       THEME: ${{ github.event.inputs.theme }}
       TARGET: ${{ github.event.inputs.target }}
-    outputs:
-      research_b64: ${{ steps.collect.outputs.research_b64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -167,14 +155,6 @@ jobs:
 
       - name: Research with Gemini
         run: node scripts/research.mjs
-
-      - name: Collect research
-        id: collect
-        run: |
-          b64=$(base64 -w 0 .note-artifacts/research.md 2>/dev/null || base64 .note-artifacts/research.md)
-          echo "research_b64<<EOF" >> $GITHUB_OUTPUT
-          echo "$b64" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Upload research artifacts
         uses: actions/upload-artifact@v4
@@ -204,7 +184,6 @@ jobs:
       ASSET_URLS: ${{ github.event.inputs.asset_urls }}
     outputs:
       title: ${{ steps.collect.outputs.title }}
-      draft_json_b64: ${{ steps.collect.outputs.draft_json_b64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -217,21 +196,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Restore research
-        env:
-          RESEARCH_B64: ${{ needs.research.outputs.research_b64 }}
-        run: |
-          mkdir -p .note-artifacts
-          echo "$RESEARCH_B64" | base64 -d > .note-artifacts/research.md || echo "$RESEARCH_B64" | base64 --decode > .note-artifacts/research.md
+      - name: Download research artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: research-artifacts
+          path: .note-artifacts
 
-      - name: Restore reference analysis
-        env:
-          REFERENCE_B64: ${{ needs.reference.outputs.reference_b64 }}
-        run: |
-          mkdir -p .note-artifacts
-          if [ -n "$REFERENCE_B64" ]; then
-            echo "$REFERENCE_B64" | base64 -d > .note-artifacts/reference-analysis.json || echo "$REFERENCE_B64" | base64 --decode > .note-artifacts/reference-analysis.json
-          fi
+      - name: Download reference artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: reference-artifacts
+          path: .note-artifacts
 
       - name: Generate draft
         run: node scripts/write.mjs
@@ -240,12 +215,8 @@ jobs:
         id: collect
         run: |
           title=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.note-artifacts/draft.json','utf8')).title)")
-          b64=$(base64 -w 0 .note-artifacts/draft.json 2>/dev/null || base64 .note-artifacts/draft.json)
           echo "title<<EOF" >> $GITHUB_OUTPUT
           echo "$title" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "draft_json_b64<<EOF" >> $GITHUB_OUTPUT
-          echo "$b64" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Upload draft artifact
@@ -263,7 +234,6 @@ jobs:
       TITLE: ${{ needs.write.outputs.title }}
     outputs:
       title: ${{ steps.collect.outputs.title }}
-      final_b64: ${{ steps.collect.outputs.final_b64 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -276,12 +246,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Restore draft json
-        env:
-          DRAFT_JSON_B64: ${{ needs.write.outputs.draft_json_b64 }}
-        run: |
-          mkdir -p .note-artifacts
-          echo "$DRAFT_JSON_B64" | base64 -d > .note-artifacts/draft.json || echo "$DRAFT_JSON_B64" | base64 --decode > .note-artifacts/draft.json
+      - name: Download draft artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: draft-artifact
+          path: .note-artifacts
 
       - name: Fact-check with Gemini
         run: node scripts/factcheck.mjs
@@ -296,12 +265,8 @@ jobs:
         id: collect
         run: |
           title=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.note-artifacts/final.json','utf8')).title)")
-          b64=$(base64 -w 0 .note-artifacts/final.json 2>/dev/null || base64 .note-artifacts/final.json)
           echo "title<<EOF" >> $GITHUB_OUTPUT
           echo "$title" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "final_b64<<EOF" >> $GITHUB_OUTPUT
-          echo "$b64" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
   images:
@@ -322,13 +287,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Restore final json
-        env:
-          FINAL_B64: ${{ needs.factcheck.outputs.final_b64 }}
-        run: |
-          mkdir -p .note-artifacts
-          test -n "$FINAL_B64" || { echo "final_b64 output is empty"; exit 1; }
-          echo "$FINAL_B64" | base64 -d > .note-artifacts/final.json || echo "$FINAL_B64" | base64 --decode > .note-artifacts/final.json
+      - name: Download final artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: final-artifact
+          path: .note-artifacts
 
       - name: Generate one image per level-2 heading
         run: node scripts/generate-images.mjs

@@ -36,7 +36,10 @@ async function generateJson(system, prompt, temperature = 0.6, tools = undefined
 const system = [
   'You are a Japanese fact-checking editor for note.com articles.',
   'Use Google Search grounding to verify the draft.',
-  'Fix unsupported claims, soften uncertain statements, and keep reliable Markdown citations in the body.',
+  'Fix unsupported claims, soften uncertain statements, and keep reliable Markdown citations sparse in the body.',
+  'Never put Markdown links, URLs, citations, or source names in headings.',
+  'Use at most 5 useful Markdown links in the entire body, only when they support a factual claim.',
+  'Do not include Google grounding redirect URLs or long tracking URLs in the article.',
   'Preserve the warm, human voice, metaphors, occasional emoji/kaomoji, and upbeat closing unless a claim is inaccurate.',
   'Do not collapse sections. Keep one section for every heading.',
   'Use only level-2 and level-3 headings, because note.com supports only large and small headings.',
@@ -78,7 +81,7 @@ const styleSystem = [
   'Do not insert blank paragraphs between a quote/exclamation and its closing Japanese quote mark.',
   'Avoid stiff phrases: "本レポートでは", "深く掘り下げていきます", "以下の通りです", "重要です" repeated, "可能です" repeated, and textbook-style enumeration without commentary.',
   'Keep each sentence as its own paragraph with a blank line after every sentence.',
-  'Keep Markdown links exactly when they are present.',
+  'Keep useful Markdown links when they are present, but remove links from headings and avoid long tracking URLs.',
 ].join('\n');
 
 const stylePrompt = [
