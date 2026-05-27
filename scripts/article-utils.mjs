@@ -28,7 +28,7 @@ export function sanitizeTitle(value) {
   s = s.replace(/^#+\s*/, '');
   s = stripMarkdownLinks(s);
   s = s.replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '').replace(/^`+|`+$/g, '');
-  return s || 'タイトル（自動生成）';
+  return s || 'タイトル未設定';
 }
 
 export function uniqueTags(tags) {
@@ -39,7 +39,7 @@ export function cleanupArticleBody(text) {
   let s = String(text || '').replace(/\r\n/g, '\n').replace(/\u200B/g, '');
 
   for (let i = 0; i < 3; i++) {
-    s = s.replace(/([\u3002\uff01\uff1f!?])\n{2,}([\u300d\u300f\u3011\uff09)\]])/g, '$1$2');
+    s = s.replace(/([。！？!?])\n{2,}([」』】）\]])/g, '$1$2');
   }
 
   s = s
@@ -62,12 +62,12 @@ function formatInlinePromptExamples(text) {
   return String(text || '')
     .split('\n')
     .map(line => {
-      const match = line.match(/^(\s*)((?:ChatGPT|Kling|動画生成AI|画像生成AI|改善後)?プロンプト\d*|Prompt\s*\d*)[:：]\s*(.{45,})$/i);
+      const match = line.match(/^(\s*)((?:ChatGPT|Kling|動画生成AI|画像生成AI|改善後)?\s*(?:プロンプト|Prompt)\s*\d*)[:：]\s*(.{45,})$/i);
       if (!match) return line;
 
       const [, indent, label, content] = match;
       const parts = content
-        .split(/(?<=[。.!！?？])\s*/)
+        .split(/(?<=[。！？!?])\s*/)
         .map(part => part.trim())
         .filter(Boolean);
       if (parts.length < 2) return line;
@@ -112,7 +112,7 @@ function normalizeOutputBlocks(text) {
     let hasClosingFence = false;
     for (; j < lines.length; j++) {
       const next = lines[j];
-      if (/^#{2,3}\s+/.test(next) || /^\[ここに[^\]\n]*(?:画像|動画|スクショ|スクリーンショット|キャプチャ|添付|貼り付け|差し込|挿入)[^\]\n]*\]$/.test(next.trim())) {
+      if (/^#{2,3}\s+/.test(next) || /^\[ここに[^\]\n]*(?:画像|動画|スクショ|スクリーンショット|キャプチャ|添付|貼り付ける|差し込む|挿入)[^\]\n]*\]$/.test(next.trim())) {
         break;
       }
       if (/^```/.test(next.trim())) hasClosingFence = true;
@@ -131,9 +131,9 @@ export function isCodeOrManualMediaSection(section) {
   const combined = `${heading}\n${body}`;
   return (
     /```/.test(combined) ||
-    /(^|\n)\s*(?:プロンプト|Prompt|ChatGPTへのプロンプト|Kling(?:への)?プロンプト|出力結果)\s*$/im.test(combined) ||
+    /(^|\n)\s*(?:プロンプト|Prompt|ChatGPTへのプロンプト|Kling(?:への)?プロンプト|Klingで入力する動きの指示|出力結果)\s*$/im.test(combined) ||
     /---\s*出力結果\s*---/.test(combined) ||
-    /\[ここに[^\]\n]*(?:画像|動画|スクショ|スクリーンショット|キャプチャ|添付|貼り付け|差し込|挿入)[^\]\n]*\]/.test(combined)
+    /\[ここに[^\]\n]*(?:画像|動画|スクショ|スクリーンショット|キャプチャ|添付|貼り付ける|差し込む|挿入|ChatGPT|Gemini|Kling|CapCut)[^\]\n]*\]/.test(combined)
   );
 }
 
@@ -150,7 +150,7 @@ function splitParagraphSentences(block) {
   }
 
   return trimmed
-    .replace(/([。！？!?]+[」』）)\]]?)(?=(?:[「『（(【\[])?[^\s\n])/g, '$1\n\n')
+    .replace(/([。！？!?]+[」』】）\]]?)(?=(?:[「『（([])?[^\s\n])/g, '$1\n\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }

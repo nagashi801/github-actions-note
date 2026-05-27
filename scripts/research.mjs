@@ -40,11 +40,12 @@ const system = [
   'Prioritize primary sources and official sources.',
   'Use Markdown links inline for citations.',
   'Return only the final research report. Do not ask questions.',
+  'This research report is not the public article. Keep assumptions as internal notes only.',
 ].join('\n');
 
 const prompt = [
   'Create a final research report for the following article plan.',
-  'If assumptions are needed, state them briefly in a section named "前提と仮定" and continue.',
+  'If assumptions are needed, keep them as internal research notes only. Do not create a public article section named "前提と仮定".',
   '',
   `Theme: ${theme}`,
   `Target reader: ${target}`,

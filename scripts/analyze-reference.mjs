@@ -89,8 +89,9 @@ const system = [
   'You analyze Japanese note.com articles for reusable article-craft patterns.',
   'Return only JSON.',
   'Do not copy or preserve the source article wording.',
-  'Extract the explanation pattern, demonstration rhythm, media placement, prompt/code-block usage, failure/improvement flow, and CTA style.',
-  'Pay special attention to paragraph rhythm, heading style, how prompt labels are shown, how screenshots/images are placed, and how each step moves from action to result.',
+  'Extract reusable craft, not content: Step structure, paragraph length, prompt/code-block display, model output display, media/screenshot placement, failure/improvement flow, and CTA style.',
+  'Pay special attention to whether the article uses a repeated "operation -> result -> explanation/tip" pattern.',
+  'When the article shows tool operations, capture the granularity: which actions are broken into separate paragraphs, where screenshots appear, and how results are introduced.',
   'The downstream article may strongly reuse the explanation pattern and granularity, but must use a different topic, examples, wording, prompts, images, and claims.',
 ].join('\n');
 
@@ -138,6 +139,9 @@ const prompt = [
     paragraphRules: ['string'],
     mediaPlan: ['string'],
     promptBlockPlan: ['string'],
+    outputBlockPlan: ['string'],
+    operationResultTipPattern: ['string'],
+    manualPlaceholderPlan: ['string'],
     stepByStepImitationNotes: ['string'],
     doNotCopy: ['string'],
   }, null, 2),
