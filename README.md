@@ -156,7 +156,7 @@ false
 ## Notes
 
 - The workflow uses `gemini-2.5-flash` by default via `GEMINI_MODEL`.
-- The source video analysis job uses `gemini-2.5-flash-lite` by default via `VIDEO_MODEL` to avoid `gemini-2.5-flash` congestion while keeping video input support.
+- The source video analysis job uses `gemini-2.5-pro` by default via `VIDEO_MODEL` to prioritize successful video understanding over the cheapest model choice.
 - The workflow uses `imagen-4.0-fast-generate-001` by default via `IMAGEN_MODEL`.
 - Gemini video understanding uses the File API after the workflow has confirmed that `video_url` is a downloadable video file.
 - Reference analysis extracts reusable article-craft patterns such as explanation order, media placement, prompt/code-block placement, and failure/improvement flow. It should not copy source article wording, assets, or proprietary prompts.
