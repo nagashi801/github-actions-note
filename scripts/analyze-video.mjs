@@ -79,7 +79,11 @@ function extensionForMime(mime) {
 }
 
 function sniffVideo(buffer) {
-  if (buffer.length >= 12 && buffer.slice(4, 8).toString('ascii') === 'ftyp') return 'video/mp4';
+  if (buffer.length >= 12 && buffer.slice(4, 8).toString('ascii') === 'ftyp') {
+    const majorBrand = buffer.slice(8, 12).toString('ascii').trim();
+    if (majorBrand === 'qt') return 'video/quicktime';
+    return 'video/mp4';
+  }
   if (buffer.length >= 4 && buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) return 'video/webm';
   if (buffer.length >= 12 && buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 11).toString('ascii') === 'AVI') return 'video/avi';
   if (buffer.length >= 3 && buffer.slice(0, 3).equals(Buffer.from([0x00, 0x00, 0x01]))) return 'video/mpeg';
