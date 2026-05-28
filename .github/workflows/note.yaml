@@ -154,6 +154,9 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       VIDEO_URL: ${{ github.event.inputs.video_url }}
+      GEMINI_RETRIES: 10
+      GEMINI_RETRY_BASE_MS: 30000
+      GEMINI_RETRY_MAX_MS: 300000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
