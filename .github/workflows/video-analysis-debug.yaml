@@ -1,0 +1,66 @@
+name: Video Analysis Debug
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'video_url / source video shared URL'
+        required: true
+        type: string
+      video_model:
+        description: 'video_model / Gemini model for video analysis'
+        required: true
+        default: 'gemini-2.5-flash-lite'
+        type: choice
+        options:
+          - gemini-2.5-flash-lite
+          - gemini-2.5-flash
+          - gemini-2.5-pro
+      retries:
+        description: 'retries / Gemini API retry count'
+        required: true
+        default: '2'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TZ: Asia/Tokyo
+  GEMINI_MODEL: gemini-2.5-flash
+  VIDEO_MODEL: ${{ github.event.inputs.video_model }}
+
+jobs:
+  analyze-video:
+    name: Analyze video only
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      VIDEO_URL: ${{ github.event.inputs.video_url }}
+      GEMINI_RETRIES: ${{ github.event.inputs.retries }}
+      GEMINI_RETRY_BASE_MS: 30000
+      GEMINI_RETRY_MAX_MS: 300000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate and analyze video
+        run: node scripts/analyze-video.mjs
+
+      - name: Upload video analysis artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-analysis-debug-artifacts
+          path: |
+            .note-artifacts/video-analysis.json
+            .note-artifacts/video-analysis.md
+          if-no-files-found: ignore
