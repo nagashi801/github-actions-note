@@ -139,7 +139,7 @@ const system = [
   'The fixed AI-video workflow template is mandatory for AI video articles. Use it as the concrete procedure layer.',
   'If videoAnalysis.enabled is true, the video analysis is the source of truth for the demo. Reverse-engineer the article from that video instead of inventing a different video concept.',
   'When videoAnalysis.enabled is true, preserve the actual scene order, character continuity, tone, narration/telop intent, and visible production result described in videoAnalysis.',
-  'When videoAnalysis.enabled is true, use the fixed workflow to explain how to create that exact kind of video: script prompts, scene image prompts, Kling motion prompts, editing choices, and manual placeholders should all match the analyzed video.',
+  'When videoAnalysis.enabled is true, treat videoAnalysis as observation data only. Use the fixed workflow to infer how to create that exact kind of video: script prompts, scene image prompts, Kling motion prompts, editing choices, and manual placeholders should all match the analyzed video.',
   'If videoAnalysis says a detail is unclear, write a manual-check placeholder instead of pretending it is known.',
   'The reference article controls article rhythm and presentation style; the fixed template controls the actual ChatGPT/Gemini/Kling/CapCut operations; the LLM adapts examples and explanations to the theme.',
   'Write every normal sentence as its own paragraph with a blank line after it.',

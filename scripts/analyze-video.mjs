@@ -216,37 +216,31 @@ if (file?.state && file.state !== 'ACTIVE') {
 }
 
 const analysisPrompt = [
-  'Analyze this video as source material for a Japanese note.com article about how the video was made with AI tools.',
+  'Analyze this video as source material for a Japanese note.com article.',
   'Return JSON only.',
+  'Keep the analysis concise. Do not explain production steps.',
+  'Only extract what is directly visible or audible.',
   'Do not invent a different story, character, tone, scene order, narration, or telop style.',
-  'Extract what is visible and audible. If audio or text is unclear, say so.',
-  'The article will reverse-engineer production steps, so focus on scene flow, production assets needed, and manual placeholders.',
+  'If audio or on-screen text is unclear, write "unclear".',
+  'Limit sceneFlow to at most 8 scenes.',
   '',
   'Return this shape:',
   JSON.stringify({
-    videoSummary: '',
-    likelyGenre: '',
+    summary: '',
+    genre: '',
     tone: '',
-    characterContinuity: '',
     sceneFlow: [
       {
         scene: 1,
         timeRange: '0:00-0:03',
-        visibleAction: '',
-        narrationOrDialogue: '',
-        telop: '',
-        cameraAndMotion: '',
-        productionPurpose: '',
+        visible: '',
+        audio: '',
+        onScreenText: '',
+        motion: '',
       },
     ],
-    reverseProductionPlan: {
-      chatGptShouldCreate: [],
-      geminiShouldCreate: [],
-      klingShouldAnimate: [],
-      capCutShouldEdit: [],
-    },
-    requiredManualPlaceholders: [],
-    articleWarnings: [],
+    notableEditing: [],
+    uncertainty: [],
   }, null, 2),
 ].join('\n');
 
@@ -258,7 +252,7 @@ const response = await withGeminiRetry('Gemini video analysis generateContent', 
   ]),
   config: {
     temperature: 0.2,
-    maxOutputTokens: 12000,
+    maxOutputTokens: 4000,
     responseMimeType: 'application/json',
   },
 }));
