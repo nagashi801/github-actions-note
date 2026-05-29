@@ -1,6 +1,5 @@
 import {
   GoogleGenAI,
-  PartMediaResolutionLevel,
   createPartFromBase64,
   createPartFromUri,
   createUserContent,
@@ -213,7 +212,6 @@ if (downloaded.bytes <= inlineMaxBytes) {
   videoPart = createPartFromBase64(
     fs.readFileSync(downloaded.path, 'base64'),
     downloaded.mimeType,
-    PartMediaResolutionLevel.MEDIA_RESOLUTION_LOW,
   );
 } else {
   console.log(`VIDEO_INPUT_METHOD=file_api ${downloaded.bytes}/${inlineMaxBytes} bytes`);
