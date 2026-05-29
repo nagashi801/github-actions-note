@@ -6,13 +6,24 @@ function sleep(ms) {
 
 function isRetryableGeminiError(error) {
   const status = Number(error?.status || error?.code || error?.error?.code || 0);
-  const message = String(error?.message || error || '').toLowerCase();
+  const message = [
+    error?.message,
+    error?.cause?.message,
+    error?.cause?.code,
+    error?.code,
+    error,
+  ].map(value => String(value || '').toLowerCase()).join(' ');
   return (
     retryableStatuses.has(status) ||
     message.includes('unavailable') ||
     message.includes('high demand') ||
     message.includes('rate limit') ||
-    message.includes('temporarily')
+    message.includes('temporarily') ||
+    message.includes('fetch failed') ||
+    message.includes('timeout') ||
+    message.includes('und_err') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout')
   );
 }
 
@@ -33,7 +44,7 @@ export async function withGeminiRetry(label, operation, options = {}) {
       const jitter = Math.floor(Math.random() * 3000);
       const waitMs = delay + jitter;
       console.warn(
-        `${label} failed with retryable Gemini error (${error?.status || 'unknown'}). ` +
+        `${label} failed with retryable Gemini error (${error?.status || error?.cause?.code || error?.code || 'unknown'}). ` +
         `Retrying in ${Math.round(waitMs / 1000)}s (${attempt + 1}/${retries})...`
       );
       await sleep(waitMs);
