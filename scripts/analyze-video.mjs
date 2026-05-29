@@ -217,7 +217,8 @@ if (file?.state && file.state !== 'ACTIVE') {
 
 const analysisPrompt = [
   'Analyze this video as source material for a Japanese note.com article.',
-  'Return JSON only.',
+  'Return compact JSON text only.',
+  'Do not use markdown fences or explanatory prose.',
   'Keep the analysis concise. Do not explain production steps.',
   'Only extract what is directly visible or audible.',
   'Do not invent a different story, character, tone, scene order, narration, or telop style.',
@@ -253,11 +254,16 @@ const response = await withGeminiRetry('Gemini video analysis generateContent', 
   config: {
     temperature: 0.2,
     maxOutputTokens: 4000,
-    responseMimeType: 'application/json',
   },
 }));
 
-const analysis = extractJsonFlexible(response.text || '') || { rawText: response.text || '' };
+const responseText = response.text || '';
+const analysis = extractJsonFlexible(responseText) || {
+  rawText: responseText,
+  emptyResponse: !responseText.trim(),
+  candidateCount: response.candidates?.length || 0,
+  finishReasons: response.candidates?.map(candidate => candidate.finishReason).filter(Boolean) || [],
+};
 const out = {
   enabled: true,
   sourceUrl: videoUrl,
