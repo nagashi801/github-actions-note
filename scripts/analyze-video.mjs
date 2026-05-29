@@ -1,4 +1,10 @@
-import { GoogleGenAI, createPartFromUri, createUserContent } from '@google/genai';
+import {
+  GoogleGenAI,
+  PartMediaResolutionLevel,
+  createPartFromBase64,
+  createPartFromUri,
+  createUserContent,
+} from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { Readable, Transform } from 'stream';
@@ -13,6 +19,7 @@ const videoUrl = (process.env.VIDEO_URL || '').trim();
 const apiKey = process.env.GEMINI_API_KEY || '';
 const model = process.env.VIDEO_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const maxBytes = Number(process.env.VIDEO_MAX_BYTES || 300 * 1024 * 1024);
+const inlineMaxBytes = Number(process.env.VIDEO_INLINE_MAX_BYTES || 20 * 1024 * 1024);
 const downloadPath = path.join(artifactsDir, 'source-video');
 
 function writeDisabled(reason) {
@@ -196,23 +203,40 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 console.log(`VIDEO_MODEL=${model}`);
-const uploaded = await withGeminiRetry('Gemini video file upload', () => ai.files.upload({
-  file: downloaded.path,
-  config: { mimeType: downloaded.mimeType },
-}));
+let inputMethod = 'file_api';
+let file = null;
+let videoPart;
 
-let file = uploaded;
-for (let attempt = 0; attempt < 30; attempt++) {
-  if (!file?.state || file.state === 'ACTIVE') break;
-  if (file.state === 'FAILED') {
-    throw new Error('Gemini File API failed to process the uploaded video');
+if (downloaded.bytes <= inlineMaxBytes) {
+  inputMethod = 'inline_data';
+  console.log(`VIDEO_INPUT_METHOD=inline_data ${downloaded.bytes}/${inlineMaxBytes} bytes`);
+  videoPart = createPartFromBase64(
+    fs.readFileSync(downloaded.path, 'base64'),
+    downloaded.mimeType,
+    PartMediaResolutionLevel.MEDIA_RESOLUTION_LOW,
+  );
+} else {
+  console.log(`VIDEO_INPUT_METHOD=file_api ${downloaded.bytes}/${inlineMaxBytes} bytes`);
+  const uploaded = await withGeminiRetry('Gemini video file upload', () => ai.files.upload({
+    file: downloaded.path,
+    config: { mimeType: downloaded.mimeType },
+  }));
+
+  file = uploaded;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (!file?.state || file.state === 'ACTIVE') break;
+    if (file.state === 'FAILED') {
+      throw new Error('Gemini File API failed to process the uploaded video');
+    }
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    file = await ai.files.get({ name: file.name });
   }
-  await new Promise(resolve => setTimeout(resolve, 5000));
-  file = await ai.files.get({ name: file.name });
-}
 
-if (file?.state && file.state !== 'ACTIVE') {
-  throw new Error(`Gemini File API did not finish processing the video. state=${file.state}`);
+  if (file?.state && file.state !== 'ACTIVE') {
+    throw new Error(`Gemini File API did not finish processing the video. state=${file.state}`);
+  }
+
+  videoPart = createPartFromUri(file.uri, file.mimeType || downloaded.mimeType);
 }
 
 const analysisPrompt = [
@@ -248,7 +272,7 @@ const analysisPrompt = [
 const response = await withGeminiRetry('Gemini video analysis generateContent', () => ai.models.generateContent({
   model,
   contents: createUserContent([
-    createPartFromUri(file.uri, file.mimeType || downloaded.mimeType),
+    videoPart,
     analysisPrompt,
   ]),
   config: {
@@ -268,16 +292,18 @@ const out = {
   enabled: true,
   sourceUrl: videoUrl,
   normalizedUrl,
+  inputMethod,
+  inlineMaxBytes,
   downloaded: true,
   confirmedVideo: true,
   mimeType: downloaded.mimeType,
   bytes: downloaded.bytes,
-  geminiFile: {
+  geminiFile: file ? {
     name: file.name,
     uri: file.uri,
     mimeType: file.mimeType || downloaded.mimeType,
     state: file.state || 'ACTIVE',
-  },
+  } : null,
   analysis,
 };
 
