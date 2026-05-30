@@ -6,6 +6,7 @@ import {
 } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { extractJsonFlexible } from './article-utils.mjs';
@@ -19,7 +20,10 @@ const apiKey = process.env.GEMINI_API_KEY || '';
 const model = process.env.VIDEO_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const maxBytes = Number(process.env.VIDEO_MAX_BYTES || 300 * 1024 * 1024);
 const inlineMaxBytes = Number(process.env.VIDEO_INLINE_MAX_BYTES || 20 * 1024 * 1024);
+const segmentSeconds = Number(process.env.VIDEO_SEGMENT_SECONDS || 5);
+const maxSegments = Number(process.env.VIDEO_MAX_SEGMENTS || 12);
 const downloadPath = path.join(artifactsDir, 'source-video');
+const segmentsDir = path.join(artifactsDir, 'video-segments');
 
 function writeDisabled(reason) {
   const out = {
@@ -103,6 +107,136 @@ function isHtml(buffer, contentType) {
   if (type.includes('text/html')) return true;
   const head = buffer.slice(0, 512).toString('utf8').trimStart().toLowerCase();
   return head.startsWith('<!doctype html') || head.startsWith('<html');
+}
+
+function runTool(command, args, label) {
+  const result = spawnSync(command, args, { encoding: 'utf8' });
+  if (result.error) {
+    failBeforeApi(`${label} failed to start: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    failBeforeApi(`${label} failed with exit code ${result.status}: ${result.stderr || result.stdout}`);
+  }
+  return result;
+}
+
+function assertTool(command) {
+  const result = spawnSync(command, ['-version'], { encoding: 'utf8' });
+  if (result.error || result.status !== 0) {
+    failBeforeApi(`${command} is required for video segmentation but was not found`);
+  }
+}
+
+function formatTime(seconds) {
+  const safe = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(safe / 60);
+  const secs = String(safe % 60).padStart(2, '0');
+  return `${minutes}:${secs}`;
+}
+
+function splitVideoForAnalysis(downloaded) {
+  if (!segmentSeconds || segmentSeconds <= 0) {
+    return [{
+      path: downloaded.path,
+      mimeType: downloaded.mimeType,
+      bytes: downloaded.bytes,
+      index: 0,
+      timeRange: '0:00-end',
+    }];
+  }
+
+  assertTool('ffmpeg');
+  fs.rmSync(segmentsDir, { recursive: true, force: true });
+  fs.mkdirSync(segmentsDir, { recursive: true });
+
+  const pattern = path.join(segmentsDir, 'segment-%03d.mp4');
+  runTool('ffmpeg', [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-y',
+    '-i', downloaded.path,
+    '-map', '0:v:0',
+    '-map', '0:a:0?',
+    '-map_metadata', '-1',
+    '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p',
+    '-profile:v', 'baseline',
+    '-level', '3.0',
+    '-r', '15',
+    '-vf', 'scale=360:-2',
+    '-c:a', 'aac',
+    '-b:a', '96k',
+    '-f', 'segment',
+    '-segment_time', String(segmentSeconds),
+    '-reset_timestamps', '1',
+    pattern,
+  ], 'ffmpeg video segmentation');
+
+  const segmentFiles = fs.readdirSync(segmentsDir)
+    .filter(name => /^segment-\d+\.mp4$/.test(name))
+    .sort()
+    .slice(0, maxSegments);
+
+  if (!segmentFiles.length) {
+    failBeforeApi('ffmpeg did not produce any video segments');
+  }
+
+  return segmentFiles.map((name, index) => {
+    const fullPath = path.join(segmentsDir, name);
+    const stat = fs.statSync(fullPath);
+    const start = index * segmentSeconds;
+    const end = start + segmentSeconds;
+    return {
+      path: fullPath,
+      mimeType: 'video/mp4',
+      bytes: stat.size,
+      index,
+      timeRange: `${formatTime(start)}-${formatTime(end)}`,
+    };
+  });
+}
+
+async function createVideoPartForInput(ai, input) {
+  if (input.bytes <= inlineMaxBytes) {
+    return {
+      inputMethod: 'inline_data',
+      geminiFile: null,
+      part: createPartFromBase64(
+        fs.readFileSync(input.path, 'base64'),
+        input.mimeType,
+      ),
+    };
+  }
+
+  const uploaded = await withGeminiRetry(`Gemini video file upload segment ${input.index + 1}`, () => ai.files.upload({
+    file: input.path,
+    config: { mimeType: input.mimeType },
+  }));
+
+  let file = uploaded;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (!file?.state || file.state === 'ACTIVE') break;
+    if (file.state === 'FAILED') {
+      throw new Error(`Gemini File API failed to process segment ${input.index + 1}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    file = await ai.files.get({ name: file.name });
+  }
+
+  if (file?.state && file.state !== 'ACTIVE') {
+    throw new Error(`Gemini File API did not finish processing segment ${input.index + 1}. state=${file.state}`);
+  }
+
+  return {
+    inputMethod: 'file_api',
+    geminiFile: {
+      name: file.name,
+      uri: file.uri,
+      mimeType: file.mimeType || input.mimeType,
+      state: file.state || 'ACTIVE',
+    },
+    part: createPartFromUri(file.uri, file.mimeType || input.mimeType),
+  };
 }
 
 async function downloadAndConfirm(url) {
@@ -202,40 +336,8 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 console.log(`VIDEO_MODEL=${model}`);
-let inputMethod = 'file_api';
-let file = null;
-let videoPart;
-
-if (downloaded.bytes <= inlineMaxBytes) {
-  inputMethod = 'inline_data';
-  console.log(`VIDEO_INPUT_METHOD=inline_data ${downloaded.bytes}/${inlineMaxBytes} bytes`);
-  videoPart = createPartFromBase64(
-    fs.readFileSync(downloaded.path, 'base64'),
-    downloaded.mimeType,
-  );
-} else {
-  console.log(`VIDEO_INPUT_METHOD=file_api ${downloaded.bytes}/${inlineMaxBytes} bytes`);
-  const uploaded = await withGeminiRetry('Gemini video file upload', () => ai.files.upload({
-    file: downloaded.path,
-    config: { mimeType: downloaded.mimeType },
-  }));
-
-  file = uploaded;
-  for (let attempt = 0; attempt < 30; attempt++) {
-    if (!file?.state || file.state === 'ACTIVE') break;
-    if (file.state === 'FAILED') {
-      throw new Error('Gemini File API failed to process the uploaded video');
-    }
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    file = await ai.files.get({ name: file.name });
-  }
-
-  if (file?.state && file.state !== 'ACTIVE') {
-    throw new Error(`Gemini File API did not finish processing the video. state=${file.state}`);
-  }
-
-  videoPart = createPartFromUri(file.uri, file.mimeType || downloaded.mimeType);
-}
+const videoInputs = splitVideoForAnalysis(downloaded);
+console.log(`VIDEO_SEGMENTS=${videoInputs.length} segment_seconds=${segmentSeconds} max_segments=${maxSegments}`);
 
 const analysisPrompt = [
   'Analyze this video as source material for a Japanese note.com article.',
@@ -267,41 +369,93 @@ const analysisPrompt = [
   }, null, 2),
 ].join('\n');
 
-const response = await withGeminiRetry('Gemini video analysis generateContent', () => ai.models.generateContent({
-  model,
-  contents: createUserContent([
-    videoPart,
-    analysisPrompt,
-  ]),
-  config: {
-    temperature: 0.2,
-    maxOutputTokens: 4000,
-  },
-}));
+const segmentResults = [];
+for (const input of videoInputs) {
+  const videoInput = await createVideoPartForInput(ai, input);
+  console.log(`VIDEO_SEGMENT_INPUT=${input.index + 1}/${videoInputs.length} ${videoInput.inputMethod} ${input.bytes}/${inlineMaxBytes} bytes ${input.timeRange}`);
+  const response = await withGeminiRetry(`Gemini video analysis segment ${input.index + 1}`, () => ai.models.generateContent({
+    model,
+    contents: createUserContent([
+      videoInput.part,
+      [
+        analysisPrompt,
+        '',
+        `This clip is segment ${input.index + 1} of ${videoInputs.length}.`,
+        `Approximate original time range: ${input.timeRange}.`,
+        'Analyze only this clip.',
+      ].join('\n'),
+    ]),
+    config: {
+      temperature: 0.2,
+      maxOutputTokens: 1200,
+    },
+  }));
 
-const responseText = response.text || '';
-const analysis = extractJsonFlexible(responseText) || {
-  rawText: responseText,
-  emptyResponse: !responseText.trim(),
-  candidateCount: response.candidates?.length || 0,
-  finishReasons: response.candidates?.map(candidate => candidate.finishReason).filter(Boolean) || [],
+  const responseText = response.text || '';
+  const parsed = extractJsonFlexible(responseText) || {
+    rawText: responseText,
+    emptyResponse: !responseText.trim(),
+    candidateCount: response.candidates?.length || 0,
+    finishReasons: response.candidates?.map(candidate => candidate.finishReason).filter(Boolean) || [],
+  };
+  segmentResults.push({
+    index: input.index,
+    timeRange: input.timeRange,
+    bytes: input.bytes,
+    inputMethod: videoInput.inputMethod,
+    geminiFile: videoInput.geminiFile,
+    analysis: parsed,
+  });
+}
+
+let sceneCounter = 1;
+const analysis = {
+  summary: segmentResults
+    .map(result => result.analysis?.summary || result.analysis?.videoSummary || '')
+    .filter(Boolean)
+    .join(' / '),
+  genre: segmentResults.find(result => result.analysis?.genre || result.analysis?.likelyGenre)?.analysis?.genre
+    || segmentResults.find(result => result.analysis?.genre || result.analysis?.likelyGenre)?.analysis?.likelyGenre
+    || '',
+  tone: segmentResults.find(result => result.analysis?.tone)?.analysis?.tone || '',
+  sceneFlow: segmentResults.flatMap((result) => {
+    const flow = Array.isArray(result.analysis?.sceneFlow) ? result.analysis.sceneFlow : [];
+    if (!flow.length) {
+      return [{
+        scene: sceneCounter++,
+        timeRange: result.timeRange,
+        visible: result.analysis?.visible || result.analysis?.rawText || '',
+        audio: result.analysis?.audio || '',
+        onScreenText: result.analysis?.onScreenText || '',
+        motion: result.analysis?.motion || '',
+      }];
+    }
+    return flow.map((scene) => ({
+      scene: sceneCounter++,
+      timeRange: scene.timeRange || result.timeRange,
+      visible: scene.visible || scene.visibleAction || '',
+      audio: scene.audio || scene.narrationOrDialogue || '',
+      onScreenText: scene.onScreenText || scene.telop || '',
+      motion: scene.motion || scene.cameraAndMotion || '',
+    }));
+  }),
+  notableEditing: segmentResults.flatMap(result => Array.isArray(result.analysis?.notableEditing) ? result.analysis.notableEditing : []),
+  uncertainty: segmentResults.flatMap(result => Array.isArray(result.analysis?.uncertainty) ? result.analysis.uncertainty : []),
+  segments: segmentResults,
 };
 const out = {
   enabled: true,
   sourceUrl: videoUrl,
   normalizedUrl,
-  inputMethod,
+  inputMethod: 'segmented',
   inlineMaxBytes,
+  segmentSeconds,
+  maxSegments,
   downloaded: true,
   confirmedVideo: true,
   mimeType: downloaded.mimeType,
   bytes: downloaded.bytes,
-  geminiFile: file ? {
-    name: file.name,
-    uri: file.uri,
-    mimeType: file.mimeType || downloaded.mimeType,
-    state: file.state || 'ACTIVE',
-  } : null,
+  geminiFile: null,
   analysis,
 };
 
